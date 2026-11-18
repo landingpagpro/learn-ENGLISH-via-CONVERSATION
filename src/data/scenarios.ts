@@ -1,6 +1,7 @@
 import { KeyPhrase, LevelMeta, ProficiencyLevel, ScenarioId, ScenarioMeta } from '../types';
+import appLogo from '../assets/images/app_logo_1794924310115.jpg';
 
-export const APP_LOGO_URL = '/src/assets/images/app_logo_1794924310115.jpg';
+export const APP_LOGO_URL = appLogo;
 
 export const LEVELS: LevelMeta[] = [
   {

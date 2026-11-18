@@ -16,5 +16,22 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      window.setTimeout(function () {
+        var root = document.getElementById('root');
+        if (root && root.childElementCount === 0) {
+          root.innerHTML =
+            '<div style="font-family:sans-serif;max-width:460px;margin:48px auto;padding:24px;background:#fff;border-radius:16px;border:1px solid #e5e7eb;text-align:center;color:#111b21">' +
+            '<h2 style="margin:0 0 8px;font-size:18px">Learn English via Conversation</h2>' +
+            '<p style="margin:0 0 12px;font-size:14px;color:#54656f;line-height:1.6">' +
+            'This app requires Node.js &amp; Vite build (it cannot run from raw unbuilt GitHub Pages).' +
+            '</p>' +
+            '<code style="display:block;background:#f0f2f5;padding:10px;border-radius:8px;font-size:12px">' +
+            'npm install &amp;&amp; npm run build &amp;&amp; npm start' +
+            '</code>' +
+            '</div>';
+        }
+      }, 6000);
+    </script>
   </body>
 </html>

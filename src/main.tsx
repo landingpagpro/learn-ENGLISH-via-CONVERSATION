@@ -1,5 +1,45 @@
+import React from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-createRoot(document.getElementById('root')!).render(<App />);
+interface ErrorBoundaryState {
+  hasError: boolean;
+}
+
+class AppErrorBoundary extends React.Component<{children: React.ReactNode}, ErrorBoundaryState> {
+  state: ErrorBoundaryState = {hasError: false};
+
+  static getDerivedStateFromError(): ErrorBoundaryState {
+    return {hasError: true};
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-dvh flex items-center justify-center bg-[#EAE6DF] p-6 text-center">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full border border-black/10 shadow-xs">
+            <h1 className="text-base font-bold text-[#111B21] mb-2">Learn English via Conversation</h1>
+            <p className="text-xs text-[#667781] mb-4">
+              Something went wrong loading the conversation view.
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 rounded-xl bg-[#008069] text-white text-xs font-semibold cursor-pointer"
+            >
+              Reload App
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+createRoot(document.getElementById('root')!).render(
+  <AppErrorBoundary>
+    <App />
+  </AppErrorBoundary>
+);

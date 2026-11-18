@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: learn-english-via-conversation
+    runtime: node
+    plan: free
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
