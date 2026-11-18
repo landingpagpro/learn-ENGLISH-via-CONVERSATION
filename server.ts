@@ -12,10 +12,18 @@ const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT) || 3000;
 const isProd = process.env.NODE_ENV === 'production';
 
+function getCleanApiKey(): string | null {
+  const raw = process.env.GEMINI_API_KEY;
+  if (!raw) return null;
+  const cleaned = raw.trim().replace(/^["']|["']$/g, '').trim();
+  if (!cleaned || cleaned === 'MY_GEMINI_API_KEY') return null;
+  return cleaned;
+}
+
 function getAiClient() {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const apiKey = getCleanApiKey();
   if (!apiKey) {
-    throw new Error('GEMINI_API_KEY is not configured in environment.');
+    throw new Error('MISSING_GEMINI_API_KEY');
   }
   return new GoogleGenAI({
     apiKey,
@@ -25,6 +33,44 @@ function getAiClient() {
       },
     },
   });
+}
+
+function formatServerError(err: unknown, fallbackMsg: string): { status: number; message: string } {
+  const raw = err instanceof Error ? err.message : String(err);
+  if (raw.includes('MISSING_GEMINI_API_KEY')) {
+    return {
+      status: 503,
+      message: 'GEMINI_API_KEY is missing in Render Environment Variables.',
+    };
+  }
+  if (raw.includes('API_KEY_INVALID') || raw.includes('API key not valid') || raw.includes('PERMISSION_DENIED') || raw.includes('403') || raw.includes('401')) {
+    return {
+      status: 401,
+      message: 'Invalid GEMINI_API_KEY in server Environment Variables.',
+    };
+  }
+  if (raw.includes('429') || raw.includes('RESOURCE_EXHAUSTED')) {
+    return {
+      status: 429,
+      message: 'Rate limit reached. Please wait a few seconds and tap Retry.',
+    };
+  }
+  if (raw.includes('NOT_FOUND') || raw.includes('404')) {
+    return {
+      status: 502,
+      message: 'AI model not available for this API key. Check your Gemini API key access.',
+    };
+  }
+  if (raw.includes('timeout') || raw.includes('Timeout') || raw.includes('503') || raw.includes('UNAVAILABLE')) {
+    return {
+      status: 503,
+      message: 'Server is waking up or timed out. Please tap Retry.',
+    };
+  }
+  return {
+    status: 500,
+    message: fallbackMsg,
+  };
 }
 
 const SCENARIO_CONTEXT: Record<string, string> = {
@@ -54,7 +100,10 @@ async function startServer() {
   app.use(express.json({ limit: '15mb' }));
 
   app.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok' });
+    res.json({
+      status: 'ok',
+      apiConfigured: Boolean(getCleanApiKey()),
+    });
   });
 
   // Helper to parse structured section stream from /api/chat/stream
@@ -452,14 +501,18 @@ Reply directly to what the learner actually asked/said (follow their topic even 
             }
           }, 2600);
         }),
-        10000
+        18000
       );
 
       const parsed = JSON.parse((response.text ?? '{}').trim());
       return res.json(parsed);
     } catch (err: unknown) {
       console.error('Chat error:', err);
-      return res.status(500).json({ error: 'The server is temporarily busy. Please try again.' });
+      const { status, message } = formatServerError(
+        err,
+        'The server is temporarily busy. Please try again.'
+      );
+      return res.status(status).json({ error: message });
     }
   });
 
@@ -521,7 +574,11 @@ Reply directly to what the learner actually asked/said (follow their topic even 
       return res.json({ phrases });
     } catch (err: unknown) {
       console.error('Phrases error:', err);
-      return res.status(500).json({ error: 'Could not generate new phrases right now. Please try again.' });
+      const { status, message } = formatServerError(
+        err,
+        'Could not generate new phrases right now. Please try again.'
+      );
+      return res.status(status).json({ error: message });
     }
   });
 
@@ -744,7 +801,11 @@ Reply directly to what the learner actually asked/said (follow their topic even 
       return res.json({ translation: (response.text ?? '').trim() });
     } catch (err: unknown) {
       console.error('Translate error:', err);
-      return res.status(500).json({ error: 'Translation is temporarily unavailable. Please try again.' });
+      const { status, message } = formatServerError(
+        err,
+        'Translation is temporarily unavailable. Please try again.'
+      );
+      return res.status(status).json({ error: message });
     }
   });
 

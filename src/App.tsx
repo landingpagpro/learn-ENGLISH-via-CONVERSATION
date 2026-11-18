@@ -58,6 +58,7 @@ export default function App() {
     } catch {
       // Ignore storage errors
     }
+    fetch('/api/health').catch(() => {});
   }, []);
 
   // Keep conversations ephemeral in session memory so old conversations never persist across reloads;
@@ -386,14 +387,14 @@ export default function App() {
 
       const hardStopTimer = window.setTimeout(() => {
         setIsTyping(false);
-      }, 15000);
+      }, 24000);
 
       const sendChatRequest = async () => {
         const res = await fetch('/api/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: requestBody,
-          signal: AbortSignal.timeout(11000),
+          signal: AbortSignal.timeout(20000),
         });
         const data = (await res.json()) as {
           replyEnglish?: string;
@@ -405,7 +406,11 @@ export default function App() {
           error?: string;
         };
         if (!res.ok || !data.replyEnglish) {
-          throw new Error(data.error || 'Connection error');
+          const err = new Error(data.error || 'Connection error') as Error & { noRetry?: boolean };
+          if (res.status >= 400 && res.status < 500) {
+            err.noRetry = true;
+          }
+          throw err;
         }
         return data;
       };
@@ -414,18 +419,21 @@ export default function App() {
         let chatData;
         try {
           chatData = await sendChatRequest();
-        } catch {
+        } catch (firstErr: unknown) {
           if (typeof navigator !== 'undefined' && !navigator.onLine) {
             throw new Error('You appear to be offline.');
           }
-          await new Promise((r) => setTimeout(r, 200));
+          if (firstErr instanceof Error && (firstErr as Error & { noRetry?: boolean }).noRetry) {
+            throw firstErr;
+          }
+          await new Promise((r) => setTimeout(r, 300));
           chatData = await sendChatRequest();
         }
         applyCompletedReply(chatData);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Please check your internet connection.';
         setFailedMessage(text);
-        setChatError(`Connection issue: ${msg}`);
+        setChatError(msg);
       } finally {
         window.clearTimeout(hardStopTimer);
         setIsTyping(false);
