@@ -1,0 +1,6 @@
+{
+  "name": "Sahbi English - صاحبي ميريكاني",
+  "description": "Practice real-life English conversations with an American AI friend, get instant Moroccan Darija grammar explanations, voice pronunciation, and 5 daily phrases.",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
