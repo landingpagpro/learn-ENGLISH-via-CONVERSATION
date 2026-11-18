@@ -175,8 +175,8 @@ async function startServer() {
     res.setHeader('Content-Encoding', 'identity');
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
-    // Establish stream immediately across reverse proxies to avoid buffering/timeout drops
-    res.write(': connected\n\n');
+    // Flush a 1KB SSE comment immediately so reverse proxies (Render/Nginx/Cloudflare) stream tokens without buffering
+    res.write(`: connected ${' '.repeat(1024)}\n\n`);
 
     let clientClosed = false;
     res.on('close', () => {
@@ -309,9 +309,9 @@ ${transMarkerInstruction}[HINT]
                 hedgeStarted = true;
                 launch('gemini-4-hydrogen', ThinkingLevel.LOW);
               }
-            }, 2400);
+            }, 1200);
           }),
-          9500,
+          15000,
           'chat stream first chunk'
         );
 
@@ -382,12 +382,11 @@ ${transMarkerInstruction}[HINT]
       return res.end();
     } catch (err: unknown) {
       console.error('Chat stream error:', err);
-      const rawMsg = err instanceof Error ? err.message : '';
-      const isBusy = rawMsg.includes('503') || rawMsg.includes('UNAVAILABLE') || rawMsg.includes('429');
-      const friendlyMsg = isBusy
-        ? 'The server is currently busy. Please try sending your message again in a moment.'
-        : 'A temporary connection issue occurred. Please try again.';
-      res.write(`data: ${JSON.stringify({ type: 'error', error: friendlyMsg })}\n\n`);
+      const { status, message } = formatServerError(
+        err,
+        'A temporary connection issue occurred. Please try again.'
+      );
+      res.write(`data: ${JSON.stringify({ type: 'error', status, error: message })}\n\n`);
       return res.end();
     }
   });

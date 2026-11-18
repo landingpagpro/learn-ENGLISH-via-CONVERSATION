@@ -221,10 +221,11 @@ export default function App() {
     }
   }, [threads]);
 
-  // Auto-scroll to latest message
+  // Auto-scroll to latest message or incoming streamed chunk
+  const lastMessageText = currentThread.messages[currentThread.messages.length - 1]?.text || '';
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [currentThread.messages.length, isTyping, activeScenario, activeLevel]);
+    messagesEndRef.current?.scrollIntoView({ behavior: isTyping ? 'auto' : 'smooth' });
+  }, [currentThread.messages.length, lastMessageText, isTyping, activeScenario, activeLevel]);
 
   const handleSelectScenario = useCallback(
     (scenarioId: ScenarioId) => {
@@ -298,6 +299,34 @@ export default function App() {
       setIsTyping(true);
       const replyMsgId = `reply-${Date.now()}`;
       let autoSpoken = false;
+
+      const updateStreamedReplyText = (partialReply: string) => {
+        if (!partialReply) return;
+        setThreads((prev) => {
+          const latest = prev[threadKey] || currentThread;
+          const exists = latest.messages.some((m) => m.id === replyMsgId);
+          const messages = exists
+            ? latest.messages.map((m) => (m.id === replyMsgId ? { ...m, text: partialReply } : m))
+            : [
+                ...latest.messages,
+                {
+                  id: replyMsgId,
+                  sender: 'alex' as const,
+                  text: partialReply,
+                  timestamp: formatTimeNow(),
+                },
+              ];
+
+          return {
+            ...prev,
+            [threadKey]: {
+              ...latest,
+              messages: messages.slice(-MAX_MESSAGES_PER_THREAD),
+              lastUpdated: Date.now(),
+            },
+          };
+        });
+      };
 
       const applyCompletedReply = (payload: {
         replyEnglish?: string;
@@ -389,6 +418,102 @@ export default function App() {
         setIsTyping(false);
       }, 24000);
 
+      const sendStreamRequest = async (): Promise<boolean> => {
+        const res = await fetch('/api/chat/stream', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: requestBody,
+          signal: AbortSignal.timeout(20000),
+        });
+
+        if (!res.ok || !res.body) {
+          throw new Error('Stream unavailable');
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let streamedReply = '';
+        let completed = false;
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const events = buffer.split('\n\n');
+          buffer = events.pop() || '';
+
+          for (const rawEvent of events) {
+            const lines = rawEvent.split('\n');
+            for (const line of lines) {
+              if (!line.startsWith('data: ')) continue;
+              const jsonStr = line.slice(6).trim();
+              if (!jsonStr) continue;
+              let evt: {
+                type: string;
+                delta?: string;
+                replyEnglish?: string;
+                hasMistake?: boolean;
+                correctedEnglish?: string;
+                explanation?: string;
+                replyTranslation?: string;
+                suggestedNextReply?: string;
+                status?: number;
+                error?: string;
+              };
+              try {
+                evt = JSON.parse(jsonStr);
+              } catch {
+                continue;
+              }
+
+              if (evt.type === 'reply_delta' && evt.delta) {
+                streamedReply += evt.delta;
+                updateStreamedReplyText(streamedReply);
+              } else if (evt.type === 'reply' && evt.replyEnglish) {
+                streamedReply = evt.replyEnglish;
+                updateStreamedReplyText(streamedReply);
+              } else if (evt.type === 'reply_complete' && evt.replyEnglish) {
+                streamedReply = evt.replyEnglish;
+                updateStreamedReplyText(streamedReply);
+                if (autoSpeakRef.current && !autoSpoken) {
+                  autoSpoken = true;
+                  play({
+                    id: `msg-${replyMsgId}`,
+                    text: streamedReply,
+                    level: activeLevel,
+                    slow: false,
+                  });
+                }
+              } else if (evt.type === 'done') {
+                completed = true;
+                applyCompletedReply({
+                  replyEnglish: evt.replyEnglish || streamedReply,
+                  hasMistake: evt.hasMistake,
+                  correctedEnglish: evt.correctedEnglish,
+                  explanation: evt.explanation,
+                  replyTranslation: evt.replyTranslation,
+                  suggestedNextReply: evt.suggestedNextReply,
+                });
+              } else if (evt.type === 'error') {
+                const err = new Error(evt.error || 'Connection error') as Error & { noRetry?: boolean };
+                if (evt.status && evt.status >= 400 && evt.status < 500) {
+                  err.noRetry = true;
+                }
+                throw err;
+              }
+            }
+          }
+        }
+
+        if (!completed && streamedReply) {
+          applyCompletedReply({ replyEnglish: streamedReply });
+          return true;
+        }
+        return completed;
+      };
+
       const sendChatRequest = async () => {
         const res = await fetch('/api/chat', {
           method: 'POST',
@@ -416,20 +541,21 @@ export default function App() {
       };
 
       try {
-        let chatData;
+        let handled = false;
         try {
-          chatData = await sendChatRequest();
-        } catch (firstErr: unknown) {
+          handled = await sendStreamRequest();
+        } catch (streamErr: unknown) {
           if (typeof navigator !== 'undefined' && !navigator.onLine) {
             throw new Error('You appear to be offline.');
           }
-          if (firstErr instanceof Error && (firstErr as Error & { noRetry?: boolean }).noRetry) {
-            throw firstErr;
+          if (streamErr instanceof Error && (streamErr as Error & { noRetry?: boolean }).noRetry) {
+            throw streamErr;
           }
-          await new Promise((r) => setTimeout(r, 300));
-          chatData = await sendChatRequest();
         }
-        applyCompletedReply(chatData);
+        if (!handled) {
+          const chatData = await sendChatRequest();
+          applyCompletedReply(chatData);
+        }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : 'Please check your internet connection.';
         setFailedMessage(text);
