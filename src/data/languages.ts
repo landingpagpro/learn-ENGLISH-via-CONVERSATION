@@ -6,12 +6,12 @@ export interface TranslationLanguage {
 }
 
 export const WORLD_LANGUAGES: TranslationLanguage[] = [
-  { code: 'en', name: 'English', nativeName: 'English', dir: 'ltr' },
   { code: 'ar', name: 'Arabic', nativeName: 'العربية', dir: 'rtl' },
   { code: 'darija', name: 'Moroccan Darija', nativeName: 'الدارجة المغربية', dir: 'rtl' },
   { code: 'fr', name: 'French', nativeName: 'Français', dir: 'ltr' },
   { code: 'es', name: 'Spanish', nativeName: 'Español', dir: 'ltr' },
   { code: 'de', name: 'German', nativeName: 'Deutsch', dir: 'ltr' },
+  { code: 'it', name: 'Italian', nativeName: 'Italiano', dir: 'ltr' },
   { code: 'pt', name: 'Portuguese', nativeName: 'Português', dir: 'ltr' },
   { code: 'nl', name: 'Dutch', nativeName: 'Nederlands', dir: 'ltr' },
   { code: 'tr', name: 'Turkish', nativeName: 'Türkçe', dir: 'ltr' },
@@ -44,5 +44,5 @@ export const WORLD_LANGUAGES: TranslationLanguage[] = [
   { code: 'he', name: 'Hebrew', nativeName: 'עברית', dir: 'rtl' },
   { code: 'ca', name: 'Catalan', nativeName: 'Català', dir: 'ltr' },
   { code: 'zgh', name: 'Amazigh (Tamazight)', nativeName: 'Tamaziɣt / ⵜⴰⵎⴰⵣⵉⵖⵜ', dir: 'ltr' },
-  { code: 'it', name: 'Simple Italian', nativeName: 'Italiano semplice', dir: 'ltr' },
+  { code: 'en-simple', name: 'Simple English', nativeName: 'Simple English (Easy)', dir: 'ltr' },
 ];
