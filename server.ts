@@ -22,12 +22,19 @@ function getCleanApiKey(): string | null {
   return cleaned;
 }
 
+let cachedAiClient: GoogleGenAI | null = null;
+let cachedAiKey: string | null = null;
+
 function getAiClient() {
   const apiKey = getCleanApiKey();
   if (!apiKey) {
     throw new Error('MISSING_GEMINI_API_KEY');
   }
-  return new GoogleGenAI({
+  if (cachedAiClient && cachedAiKey === apiKey) {
+    return cachedAiClient;
+  }
+  cachedAiKey = apiKey;
+  cachedAiClient = new GoogleGenAI({
     apiKey,
     httpOptions: {
       headers: {
@@ -35,6 +42,7 @@ function getAiClient() {
       },
     },
   });
+  return cachedAiClient;
 }
 
 function formatServerError(err: unknown, fallbackMsg: string): { status: number; message: string } {
@@ -216,13 +224,7 @@ app.use(express.json({ limit: '15mb' }));
       const systemInstruction = `Sei Marco, partner italiano amichevole in "Impara l'Italiano".
 Contesto: ${scenarioInfo}
 Livello: ${levelInfo}
-Regole:
-- Rispondi subito in italiano naturale a ciò che dice l'utente (1-2 frasi brevi + 1 domanda breve).
-- Se ci sono errori grammaticali o parole straniere, correggili in [CORRECTED] e spiega in italiano semplice in [EXPLAIN].
-
-Usa SOLO questi marker esatti in ordine iniziando da [REPLY]:
-[REPLY]
-Risposta diretta in italiano
+Rispondi SUBITO con 1-2 frasi brevi in italiano + 1 domanda breve (senza scrivere [REPLY] o prefissi). Poi aggiungi solo questi marker:
 [MISTAKE]
 YES o NO (se NO ometti [CORRECTED] e [EXPLAIN])
 [CORRECTED]
@@ -266,10 +268,8 @@ ${transMarkerInstruction}[HINT]
         const winner = await withTimeout(
           new Promise<{ iter: StreamIter; firstStep: StreamStep }>((resolve, reject) => {
             let settled = false;
-            let hedgeStarted = false;
             let failures = 0;
             let lastErr: unknown = null;
-            let hedgeTimer: NodeJS.Timeout | null = null;
 
             const launch = (model: string, thinkingLevel: ThinkingLevel) => {
               ai.models
@@ -278,7 +278,7 @@ ${transMarkerInstruction}[HINT]
                   contents: prompt,
                   config: {
                     systemInstruction,
-                    maxOutputTokens: 320,
+                    maxOutputTokens: 220,
                     thinkingConfig: { thinkingLevel },
                   },
                 })
@@ -290,32 +290,22 @@ ${transMarkerInstruction}[HINT]
                     return;
                   }
                   settled = true;
-                  if (hedgeTimer) clearTimeout(hedgeTimer);
                   resolve({ iter, firstStep });
                 })
                 .catch((err: unknown) => {
                   lastErr = err;
                   failures += 1;
                   if (settled) return;
-                  if (!hedgeStarted) {
-                    hedgeStarted = true;
-                    if (hedgeTimer) clearTimeout(hedgeTimer);
-                    launch('gemini-4-hydrogen', ThinkingLevel.MINIMAL);
-                  } else if (failures >= 2) {
+                  if (failures >= 2) {
                     settled = true;
-                    if (hedgeTimer) clearTimeout(hedgeTimer);
                     reject(lastErr || new Error('Servizio temporaneamente occupato.'));
                   }
                 });
             };
 
+            // Race both fast models from t=0ms with zero hedge pause
             launch('gemini-3.1-flash-lite', ThinkingLevel.MINIMAL);
-            hedgeTimer = setTimeout(() => {
-              if (!settled && !hedgeStarted && !clientClosed) {
-                hedgeStarted = true;
-                launch('gemini-4-hydrogen', ThinkingLevel.MINIMAL);
-              }
-            }, 250);
+            launch('gemini-4-hydrogen', ThinkingLevel.MINIMAL);
           }),
           8000,
           'chat stream first chunk'
@@ -332,28 +322,26 @@ ${transMarkerInstruction}[HINT]
             fullText += piece;
 
             const replyStart = fullText.indexOf('[REPLY]');
-            if (replyStart !== -1) {
-              let afterTag = fullText.slice(replyStart + '[REPLY]'.length);
-              const nextMarkerIdx = afterTag.search(/\n?\[(?:MISTAKE|CORRECTED|EXPLAIN|TRANS|HINT)\]/);
-              if (nextMarkerIdx !== -1) {
-                afterTag = afterTag.slice(0, nextMarkerIdx);
-                const finalReplyChunk = afterTag.replace(/^\s+/, '').trim();
-                if (!replyCompletedSent && finalReplyChunk) {
-                  replyCompletedSent = true;
-                  lastSentReply = finalReplyChunk;
-                  res.write(`data: ${JSON.stringify({ type: 'reply_complete', replyItalian: finalReplyChunk })}\n\n`);
-                }
-              } else {
-                afterTag = afterTag.replace(/\n?\[[A-Z_]{0,12}$/, '');
-                const cleanReply = afterTag.replace(/^\s+/, '');
-                if (cleanReply && cleanReply.length > lastSentReply.length && cleanReply.startsWith(lastSentReply)) {
-                  const delta = cleanReply.slice(lastSentReply.length);
-                  lastSentReply = cleanReply;
-                  res.write(`data: ${JSON.stringify({ type: 'reply_delta', delta })}\n\n`);
-                } else if (cleanReply && cleanReply !== lastSentReply) {
-                  lastSentReply = cleanReply;
-                  res.write(`data: ${JSON.stringify({ type: 'reply', replyItalian: cleanReply })}\n\n`);
-                }
+            let afterTag = replyStart !== -1 ? fullText.slice(replyStart + '[REPLY]'.length) : fullText;
+            const nextMarkerIdx = afterTag.search(/\n?\[(?:MISTAKE|CORRECTED|EXPLAIN|TRANS|HINT)\]/);
+            if (nextMarkerIdx !== -1) {
+              afterTag = afterTag.slice(0, nextMarkerIdx);
+              const finalReplyChunk = afterTag.replace(/^\s+/, '').trim();
+              if (!replyCompletedSent && finalReplyChunk) {
+                replyCompletedSent = true;
+                lastSentReply = finalReplyChunk;
+                res.write(`data: ${JSON.stringify({ type: 'reply_complete', replyItalian: finalReplyChunk })}\n\n`);
+              }
+            } else {
+              afterTag = afterTag.replace(/\n?\[(?:R|RE|REP|REPL|REPLY|M|MI|MIS|MIST|MISTA|MISTAK|MISTAKE|C|CO|H|HI|T|TR|E|EX)?$/i, '');
+              const cleanReply = afterTag.replace(/^\s+/, '');
+              if (cleanReply && cleanReply.length > lastSentReply.length && cleanReply.startsWith(lastSentReply)) {
+                const delta = cleanReply.slice(lastSentReply.length);
+                lastSentReply = cleanReply;
+                res.write(`data: ${JSON.stringify({ type: 'reply_delta', delta })}\n\n`);
+              } else if (cleanReply && cleanReply !== lastSentReply) {
+                lastSentReply = cleanReply;
+                res.write(`data: ${JSON.stringify({ type: 'reply', replyItalian: cleanReply })}\n\n`);
               }
             }
           }
@@ -454,10 +442,8 @@ Rispondi subito in italiano naturale (1-2 frasi brevi + 1 domanda breve in reply
       const response = await raceTimeout(
         new Promise<Awaited<ReturnType<typeof ai.models.generateContent>>>((resolve, reject) => {
           let settled = false;
-          let hedgeStarted = false;
           let failures = 0;
           let lastErr: unknown = null;
-          let hedgeTimer: NodeJS.Timeout | null = null;
 
           const launch = (model: string, thinkingLevel: ThinkingLevel) => {
             ai.models
@@ -466,7 +452,7 @@ Rispondi subito in italiano naturale (1-2 frasi brevi + 1 domanda breve in reply
                 contents: prompt,
                 config: {
                   systemInstruction,
-                  maxOutputTokens: 320,
+                  maxOutputTokens: 220,
                   thinkingConfig: { thinkingLevel },
                   responseMimeType: 'application/json',
                   responseSchema: {
@@ -479,32 +465,22 @@ Rispondi subito in italiano naturale (1-2 frasi brevi + 1 domanda breve in reply
               .then((resObj) => {
                 if (settled) return;
                 settled = true;
-                if (hedgeTimer) clearTimeout(hedgeTimer);
                 resolve(resObj);
               })
               .catch((err: unknown) => {
                 lastErr = err;
                 failures += 1;
                 if (settled) return;
-                if (!hedgeStarted) {
-                  hedgeStarted = true;
-                  if (hedgeTimer) clearTimeout(hedgeTimer);
-                  launch('gemini-4-hydrogen', ThinkingLevel.MINIMAL);
-                } else if (failures >= 2) {
+                if (failures >= 2) {
                   settled = true;
-                  if (hedgeTimer) clearTimeout(hedgeTimer);
                   reject(lastErr || new Error('Errore chat'));
                 }
               });
           };
 
+          // Race both fast models at t=0ms
           launch('gemini-3.1-flash-lite', ThinkingLevel.MINIMAL);
-          hedgeTimer = setTimeout(() => {
-            if (!settled && !hedgeStarted) {
-              hedgeStarted = true;
-              launch('gemini-4-hydrogen', ThinkingLevel.MINIMAL);
-            }
-          }, 250);
+          launch('gemini-4-hydrogen', ThinkingLevel.MINIMAL);
         }),
         8000
       );

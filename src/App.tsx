@@ -583,7 +583,7 @@ export default function App() {
         if (!firstTokenReceived && !winnerLocked) {
           startFallbackOnce()?.catch(() => {});
         }
-      }, 2000);
+      }, 900);
 
       try {
         try {
@@ -744,9 +744,6 @@ export default function App() {
   const activeLevelMeta = LEVELS.find((l) => l.id === activeLevel) || LEVELS[0];
   const memorizedCount = currentThread.phrases.filter((p) => p.memorized).length;
 
-  const lastMessage = currentThread.messages[currentThread.messages.length - 1];
-  const showMarcoTypingBubble = isTyping && (!lastMessage || lastMessage.sender === 'user');
-
   return (
     <div className="h-dvh w-full overflow-hidden flex bg-[#EEF2F6]">
       {/* Left Sidebar: Topics & 3 Levels (Always visible on md+, toggled on mobile) */}
@@ -894,17 +891,6 @@ export default function App() {
               }}
             />
           ))}
-
-          {/* Instant Marco typing indicator bubble (zero spinners, zero waiting ellipses) */}
-          {showMarcoTypingBubble && (
-            <div dir="ltr" className="flex w-full justify-start">
-              <div className="bg-white border border-slate-200 rounded-xl rounded-tl-[4px] px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)] flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#1E40AF]/70 animate-pulse" />
-                <span className="w-2 h-2 rounded-full bg-[#1E40AF]/50 animate-pulse [animation-delay:150ms]" />
-                <span className="w-2 h-2 rounded-full bg-[#1E40AF]/35 animate-pulse [animation-delay:300ms]" />
-              </div>
-            </div>
-          )}
 
           {/* Offline / API / Audio Error Notice with Retry */}
           {(!isOnline || chatError || audioError) && (
