@@ -8,7 +8,7 @@ export interface TranslationLanguage {
 export const WORLD_LANGUAGES: TranslationLanguage[] = [
   { code: 'ar', name: 'Arabic', nativeName: 'العربية', dir: 'rtl' },
   { code: 'darija', name: 'Moroccan Darija', nativeName: 'الدارجة المغربية', dir: 'rtl' },
-  { code: 'fr', name: 'French', nativeName: 'Français', dir: 'ltr' },
+  { code: 'en', name: 'English', nativeName: 'English', dir: 'ltr' },
   { code: 'es', name: 'Spanish', nativeName: 'Español', dir: 'ltr' },
   { code: 'de', name: 'German', nativeName: 'Deutsch', dir: 'ltr' },
   { code: 'it', name: 'Italian', nativeName: 'Italiano', dir: 'ltr' },
@@ -44,5 +44,5 @@ export const WORLD_LANGUAGES: TranslationLanguage[] = [
   { code: 'he', name: 'Hebrew', nativeName: 'עברית', dir: 'rtl' },
   { code: 'ca', name: 'Catalan', nativeName: 'Català', dir: 'ltr' },
   { code: 'zgh', name: 'Amazigh (Tamazight)', nativeName: 'Tamaziɣt / ⵜⴰⵎⴰⵣⵉⵖⵜ', dir: 'ltr' },
-  { code: 'en-simple', name: 'Simple English', nativeName: 'Simple English (Easy)', dir: 'ltr' },
+  { code: 'fr-simple', name: 'Simple French', nativeName: 'Français facile', dir: 'ltr' },
 ];

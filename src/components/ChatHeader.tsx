@@ -39,46 +39,46 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   const levelMeta = LEVELS.find((l) => l.id === level) || LEVELS[0];
 
   return (
-    <header className="h-14 px-2 sm:px-4 bg-[#F0F2F5] border-b border-black/10 flex items-center justify-between gap-2 shrink-0 sticky top-0 z-20">
+    <header className="h-14 px-2 sm:px-4 bg-[#EEF2F7] border-b border-[#1E3A8A]/10 flex items-center justify-between gap-2 shrink-0 sticky top-0 z-20">
       {/* Left Group: Back button (mobile) + Logo + Title */}
       <div className="flex items-center gap-2 sm:gap-3 min-w-0">
         <button
           type="button"
           onClick={onBackToScenarios}
           aria-label="Back to topics"
-          className="md:hidden min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-[#54656F] hover:bg-black/5 active:bg-black/10 transition-colors cursor-pointer shrink-0"
+          className="md:hidden min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-[#475569] hover:bg-black/5 active:bg-black/10 transition-colors cursor-pointer shrink-0"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
 
         <div className="relative shrink-0">
           {imgError ? (
-            <div className="w-10 h-10 rounded-xl bg-[#008069] text-white font-bold text-xs flex items-center justify-center border border-black/10">
-              LE
+            <div className="w-10 h-10 rounded-lg bg-[#1E3A8A] text-white font-display font-bold text-xs flex items-center justify-center border border-[#1E3A8A]/20">
+              LF
             </div>
           ) : (
             <img
               src={APP_LOGO_URL}
-              alt="Learn English via Conversation"
+              alt="Français par la conversation"
               referrerPolicy="no-referrer"
               onError={() => setImgError(true)}
-              className="w-10 h-10 rounded-xl object-cover border border-black/10 bg-white"
+              className="w-10 h-10 rounded-lg object-cover border border-[#1E3A8A]/15 bg-white"
             />
           )}
         </div>
 
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
-            <h2 className="text-[14.5px] font-semibold text-[#111B21] truncate">
-              {scenario.id === 'conversation' ? 'Learn English via Conversation' : scenario.title}
+            <h2 className="font-display text-[15px] font-semibold text-[#141B2D] truncate">
+              {scenario.id === 'conversation' ? 'Français par la conversation' : scenario.title}
             </h2>
           </div>
-          <p className="text-[11px] text-[#667781] truncate">
+          <p className="text-[11px] text-[#475569] truncate">
             {isTyping ? (
-              <span className="text-[#008069] font-medium">Replying</span>
+              <span className="text-[#1E3A8A] font-medium">Replying</span>
             ) : (
               <span>
-                {levelMeta.label} · English Practice
+                {levelMeta.label} · French Practice
               </span>
             )}
           </p>
@@ -92,10 +92,10 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           onClick={onToggleLiteMode}
           title={liteMode ? 'Lite mode enabled (local speech, low data)' : 'Enable Lite mode for slow connections'}
           aria-label="Toggle Lite mode"
-          className={`min-h-[40px] px-2.5 rounded-xl border transition-colors flex items-center gap-1 text-xs font-semibold whitespace-nowrap cursor-pointer ${
+          className={`min-h-[40px] px-2.5 rounded-lg border transition-colors flex items-center gap-1 text-xs font-semibold whitespace-nowrap cursor-pointer ${
             liteMode
               ? 'bg-amber-50 border-amber-300 text-amber-800'
-              : 'bg-white border-black/10 text-[#667781] hover:bg-[#F7F8FA]'
+              : 'bg-white border-slate-900/10 text-[#475569] hover:bg-[#F8FAFC]'
           }`}
         >
           <Wifi className="w-3.5 h-3.5 shrink-0" />
@@ -107,10 +107,10 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           onClick={onToggleAutoSpeak}
           title={autoSpeak ? 'Auto-speak enabled' : 'Auto-speak muted'}
           aria-label={autoSpeak ? 'Mute auto-speak' : 'Enable auto-speak'}
-          className={`min-h-[40px] px-2.5 rounded-xl border transition-colors flex items-center gap-1.5 text-xs font-semibold whitespace-nowrap cursor-pointer ${
+          className={`min-h-[40px] px-2.5 rounded-lg border transition-colors flex items-center gap-1.5 text-xs font-semibold whitespace-nowrap cursor-pointer ${
             autoSpeak
-              ? 'bg-[#E7FCE3] border-[#008069]/25 text-[#008069]'
-              : 'bg-white border-black/10 text-[#667781] hover:bg-[#F7F8FA]'
+              ? 'bg-[#EEF2FF] border-[#1E3A8A]/25 text-[#1E3A8A]'
+              : 'bg-white border-slate-900/10 text-[#475569] hover:bg-[#F8FAFC]'
           }`}
         >
           {autoSpeak ? (
@@ -124,31 +124,31 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         <button
           type="button"
           onClick={onOpenPhrases}
-          className="xl:hidden min-h-[40px] px-2.5 sm:px-3 rounded-xl bg-white border border-black/10 text-[#008069] hover:bg-[#F7F8FA] active:scale-[0.98] transition-all flex items-center gap-1.5 text-xs font-semibold whitespace-nowrap cursor-pointer"
+          className="xl:hidden min-h-[40px] px-2.5 sm:px-3 rounded-lg bg-white border border-slate-900/10 text-[#1E3A8A] hover:bg-[#F8FAFC] active:scale-[0.98] transition-all flex items-center gap-1.5 text-xs font-semibold whitespace-nowrap cursor-pointer"
         >
           <BookOpen className="w-4 h-4 shrink-0" />
           <span>5 Phrases</span>
-          <span className="text-[#667781] tabular-nums">
+          <span className="text-[#64748B] tabular-nums">
             {memorizedCount}/{totalPhrases}
           </span>
         </button>
 
         {confirmReset ? (
-          <div className="flex items-center gap-1 bg-white border border-black/10 rounded-xl p-1">
+          <div className="flex items-center gap-1 bg-white border border-slate-900/10 rounded-lg p-1">
             <button
               type="button"
               onClick={() => {
                 onResetChat();
                 setConfirmReset(false);
               }}
-              className="px-2.5 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded-lg whitespace-nowrap cursor-pointer"
+              className="px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 rounded-md whitespace-nowrap cursor-pointer"
             >
               Clear
             </button>
             <button
               type="button"
               onClick={() => setConfirmReset(false)}
-              className="px-2.5 py-1.5 text-xs font-medium text-[#54656F] hover:bg-black/5 rounded-lg whitespace-nowrap cursor-pointer"
+              className="px-2.5 py-1.5 text-xs font-medium text-[#475569] hover:bg-black/5 rounded-md whitespace-nowrap cursor-pointer"
             >
               Cancel
             </button>
@@ -159,7 +159,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
             onClick={() => setConfirmReset(true)}
             title="New conversation"
             aria-label="New conversation"
-            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-[#54656F] hover:bg-black/5 active:bg-black/10 transition-colors cursor-pointer"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-[#475569] hover:bg-black/5 active:bg-black/10 transition-colors cursor-pointer"
           >
             <RotateCcw className="w-[18px] h-[18px]" />
           </button>
