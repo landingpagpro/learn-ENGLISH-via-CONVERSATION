@@ -1,5 +1,6 @@
 import express from 'express';
 import dotenv from 'dotenv';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
@@ -11,6 +12,7 @@ const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT) || 3000;
 const isProd = process.env.NODE_ENV === 'production';
+const isVercel = Boolean(process.env.VERCEL);
 
 function getCleanApiKey(): string | null {
   const raw = process.env.GEMINI_API_KEY;
@@ -81,29 +83,28 @@ function formatServerError(err: unknown, fallbackMsg: string): { status: number;
 
 const SCENARIO_CONTEXT: Record<string, string> = {
   conversation:
-    'Open everyday French conversation on any topic the learner chooses. Keep the tone warm, natural, and engaging.',
+    'Open everyday Italian conversation on any topic the learner chooses. Keep the tone warm, natural, and engaging.',
   airport:
-    'At a French international airport (check-in desk, security, boarding gate, baggage claim). Act as a helpful travel partner or airport staff member.',
+    'At an Italian international airport (check-in desk, security, boarding gate, baggage claim). Act as a helpful travel partner or airport staff member.',
   work:
-    'At a modern French-speaking workplace. Act as a friendly coworker chatting before a meeting, discussing tasks, deadlines, and teamwork.',
+    'At a modern Italian workplace. Act as a friendly coworker chatting before a meeting, discussing tasks, deadlines, and teamwork.',
   doctor:
-    'At a medical clinic in France. Act as a warm, reassuring doctor asking about symptoms and explaining next steps clearly.',
+    'At a medical clinic in Italy. Act as a warm, reassuring doctor asking about symptoms and explaining next steps clearly.',
   meeting:
-    'Meeting someone new at a casual Parisian café or social gathering. Act as a friendly French conversation partner who enjoys making new friends.',
+    'Meeting someone new at a casual Italian café or social gathering. Act as a friendly conversation partner who enjoys making new friends.',
 };
 
 const LEVEL_INSTRUCTIONS: Record<string, string> = {
   beginner:
-    'BEGINNER (A1-A2): Use very simple, high-frequency French words and short sentences (1-2 short sentences max). Avoid complex idioms or slang. Speak gently and patiently.',
+    'BEGINNER (A1-A2): Use very simple, high-frequency Italian words and short sentences (1-2 short sentences max). Avoid complex idioms or slang. Speak gently and patiently.',
   intermediate:
-    'INTERMEDIATE (B1-B2): Use natural everyday conversational French, common expressions, and 2-3 friendly sentences. Ask engaging follow-up questions.',
+    'INTERMEDIATE (B1-B2): Use natural everyday conversational Italian, common expressions, and 2-3 friendly sentences. Ask engaging follow-up questions.',
   advanced:
-    'ADVANCED (C1-C2): Use authentic, idiomatic French with natural expressions, subtle wit, and rich conversational depth.',
+    'ADVANCED (C1-C2): Use authentic, idiomatic Italian with natural expressions, subtle humor, and rich conversational depth.',
 };
 
-async function startServer() {
-  const app = express();
-  app.use(express.json({ limit: '15mb' }));
+export const app = express();
+app.use(express.json({ limit: '15mb' }));
 
   app.get('/api/health', (_req, res) => {
     res.json({
@@ -128,14 +129,14 @@ async function startServer() {
       return raw.slice(start, end).trim();
     };
 
-    const replyFrenchRaw = extract('[REPLY]', ['[MISTAKE]', '[CORRECTED]', '[EXPLAIN]', '[TRANS]', '[HINT]']);
-    const replyFrench =
-      replyFrenchRaw ||
+    const replyItalianRaw = extract('[REPLY]', ['[MISTAKE]', '[CORRECTED]', '[EXPLAIN]', '[TRANS]', '[HINT]']);
+    const replyItalian =
+      replyItalianRaw ||
       (raw.indexOf('[REPLY]') === -1
         ? raw.split(/\[(?:MISTAKE|CORRECTED|EXPLAIN|TRANS|HINT)\]/)[0].trim()
         : '');
     const mistakeFlag = extract('[MISTAKE]', ['[CORRECTED]', '[EXPLAIN]', '[TRANS]', '[HINT]']).toUpperCase();
-    const correctedFrench = extract('[CORRECTED]', ['[EXPLAIN]', '[TRANS]', '[HINT]']);
+    const correctedItalian = extract('[CORRECTED]', ['[EXPLAIN]', '[TRANS]', '[HINT]']);
     const explanation = extract('[EXPLAIN]', ['[TRANS]', '[HINT]']);
     const replyTranslation = extract('[TRANS]', ['[HINT]']);
     const suggestedNextReply = extract('[HINT]', []);
@@ -143,13 +144,13 @@ async function startServer() {
     const hasMistake =
       mistakeFlag.startsWith('YES') ||
       mistakeFlag.startsWith('TRUE') ||
-      (correctedFrench.length > 0 && correctedFrench.toLowerCase() !== 'none');
+      (correctedItalian.length > 0 && correctedItalian.toLowerCase() !== 'none');
 
     return {
       hasMistake,
-      correctedFrench: hasMistake && correctedFrench.toLowerCase() !== 'none' ? correctedFrench : '',
+      correctedItalian: hasMistake && correctedItalian.toLowerCase() !== 'none' ? correctedItalian : '',
       explanation: hasMistake && explanation.toLowerCase() !== 'none' ? explanation : '',
-      replyFrench,
+      replyItalian,
       replyTranslation,
       suggestedNextReply,
     };
@@ -158,7 +159,7 @@ async function startServer() {
   function buildChatPrompts(
     scenarioId: string,
     level: string,
-    history: Array<{ sender: 'user' | 'claire'; text: string }>,
+    history: Array<{ sender: 'user' | 'marco'; text: string }>,
     userMessage: string
   ) {
     const scenarioInfo = SCENARIO_CONTEXT[scenarioId] || SCENARIO_CONTEXT.conversation;
@@ -173,11 +174,10 @@ async function startServer() {
     return { scenarioInfo, levelInfo, prompt };
   }
 
-  // 1A. Streaming Conversational Chat (SSE)
+  // 1A. Streaming Conversational Chat (SSE — HTTP/2 & Render proxy safe)
   app.post('/api/chat/stream', async (req, res) => {
-    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
-    res.setHeader('Connection', 'keep-alive');
     res.setHeader('Content-Encoding', 'identity');
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
@@ -195,7 +195,7 @@ async function startServer() {
       const { scenarioId, level, history, userMessage, targetLanguageName } = req.body as {
         scenarioId: string;
         level: string;
-        history: Array<{ sender: 'user' | 'claire'; text: string }>;
+        history: Array<{ sender: 'user' | 'marco'; text: string }>;
         userMessage: string;
         targetLanguageName?: string;
       };
@@ -212,25 +212,25 @@ async function startServer() {
         ? `[TRANS]\nAccurate natural translation of [REPLY] into ${transLang}\n`
         : '';
 
-      const systemInstruction = `You are Claire, a friendly native French conversation partner in "Français par la conversation".
+      const systemInstruction = `You are Marco, a friendly native Italian conversation partner in "Learn Italian via Conversation".
 Context: ${scenarioInfo}
 Level: ${levelInfo}
 Rules:
-- Reply directly in natural French to what the learner actually asked or said. Follow their topic even if it changes (sports, food, culture, travel, daily life).
-- If they write broken French or mix another language, understand their intent, answer directly in French, and teach the natural French phrasing in [CORRECTED] + [EXPLAIN].
-- Keep [REPLY] concise (1-2 short natural French sentences + 1 short follow-up question in French).
+- Reply directly in natural Italian to what the learner actually asked or said. Follow their topic even if it changes (sports, food, culture, travel, daily life).
+- If they write broken Italian or mix another language, understand their intent, answer directly in Italian, and teach the natural Italian phrasing in [CORRECTED] + [EXPLAIN].
+- Keep [REPLY] concise (1-2 short natural Italian sentences + 1 short follow-up question in Italian).
 
 Use ONLY these exact markers in order, starting immediately with [REPLY]:
 [REPLY]
-Your direct French reply
+Your direct Italian reply
 [MISTAKE]
 YES or NO (ignore minor punctuation/capitalization/missing accents if unambiguous; if NO, omit [CORRECTED] and [EXPLAIN])
 [CORRECTED]
-Natural French version of learner's message (only if YES)
+Natural Italian version of learner's message (only if YES)
 [EXPLAIN]
-1 short simple-English grammar tip explaining why in French (only if YES)
+1 short simple-English grammar tip explaining why in Italian (only if YES)
 ${transMarkerInstruction}[HINT]
-1 short French reply the learner can say next`;
+1 short Italian reply the learner can say next`;
 
       const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
         let timer: NodeJS.Timeout;
@@ -314,9 +314,9 @@ ${transMarkerInstruction}[HINT]
                 hedgeStarted = true;
                 launch('gemini-4-hydrogen', ThinkingLevel.LOW);
               }
-            }, 1200);
+            }, 900);
           }),
-          15000,
+          8500,
           'chat stream first chunk'
         );
 
@@ -340,7 +340,7 @@ ${transMarkerInstruction}[HINT]
                 if (!replyCompletedSent && finalReplyChunk) {
                   replyCompletedSent = true;
                   lastSentReply = finalReplyChunk;
-                  res.write(`data: ${JSON.stringify({ type: 'reply_complete', replyFrench: finalReplyChunk })}\n\n`);
+                  res.write(`data: ${JSON.stringify({ type: 'reply_complete', replyItalian: finalReplyChunk })}\n\n`);
                 }
               } else {
                 afterTag = afterTag.replace(/\n?\[[A-Z_]{0,12}$/, '');
@@ -351,7 +351,7 @@ ${transMarkerInstruction}[HINT]
                   res.write(`data: ${JSON.stringify({ type: 'reply_delta', delta })}\n\n`);
                 } else if (cleanReply && cleanReply !== lastSentReply) {
                   lastSentReply = cleanReply;
-                  res.write(`data: ${JSON.stringify({ type: 'reply', replyFrench: cleanReply })}\n\n`);
+                  res.write(`data: ${JSON.stringify({ type: 'reply', replyItalian: cleanReply })}\n\n`);
                 }
               }
             }
@@ -378,8 +378,8 @@ ${transMarkerInstruction}[HINT]
       }
 
       const parsed = parseStreamedSections(fullText);
-      if (!parsed.replyFrench && lastSentReply) {
-        parsed.replyFrench = lastSentReply;
+      if (!parsed.replyItalian && lastSentReply) {
+        parsed.replyItalian = lastSentReply;
       }
 
       res.write(`data: ${JSON.stringify({ type: 'done', ...parsed })}\n\n`);
@@ -395,13 +395,13 @@ ${transMarkerInstruction}[HINT]
     }
   });
 
-  // 1B. Standard JSON Chat Endpoint (Non-streaming fallback)
+  // 1B. Standard JSON Chat Endpoint (Fast hedged fallback)
   app.post('/api/chat', async (req, res) => {
     try {
       const { scenarioId, level, history, userMessage, targetLanguageName } = req.body as {
         scenarioId: string;
         level: string;
-        history: Array<{ sender: 'user' | 'claire'; text: string }>;
+        history: Array<{ sender: 'user' | 'marco'; text: string }>;
         userMessage: string;
         targetLanguageName?: string;
       };
@@ -414,24 +414,24 @@ ${transMarkerInstruction}[HINT]
       const { scenarioInfo, levelInfo, prompt } = buildChatPrompts(scenarioId, level, history, userMessage);
       const transLang = targetLanguageName?.trim();
 
-      const systemInstruction = `You are Claire, a friendly native French conversation partner.
+      const systemInstruction = `You are Marco, a friendly native Italian conversation partner.
 Context: ${scenarioInfo}
 Level: ${levelInfo}
-Reply directly in natural French to what the learner actually asked/said (follow their topic even if it changes). Keep replyFrench concise (1-2 short French sentences + 1 short French question). Set hasMistake=true only for real French mistakes or non-French words, and give correctedFrench + 1 short encouraging explanation in simple English. Always give suggestedNextReply in natural French.${
-        transLang ? ` Also provide replyTranslation of replyFrench in ${transLang}.` : ''
+Reply directly in natural Italian to what the learner actually asked/said (follow their topic even if it changes). Keep replyItalian concise (1-2 short Italian sentences + 1 short Italian question). Set hasMistake=true only for real Italian mistakes or non-Italian words, and give correctedItalian + 1 short encouraging explanation in simple English. Always give suggestedNextReply in natural Italian.${
+        transLang ? ` Also provide replyTranslation of replyItalian in ${transLang}.` : ''
       }`;
 
       const schemaProperties: Record<string, { type: Type }> = {
-        replyFrench: { type: Type.STRING },
+        replyItalian: { type: Type.STRING },
         hasMistake: { type: Type.BOOLEAN },
-        correctedFrench: { type: Type.STRING },
+        correctedItalian: { type: Type.STRING },
         explanation: { type: Type.STRING },
         suggestedNextReply: { type: Type.STRING },
       };
       const requiredFields = [
-        'replyFrench',
+        'replyItalian',
         'hasMistake',
-        'correctedFrench',
+        'correctedItalian',
         'explanation',
         'suggestedNextReply',
       ];
@@ -502,9 +502,9 @@ Reply directly in natural French to what the learner actually asked/said (follow
               hedgeStarted = true;
               launch('gemini-4-hydrogen', ThinkingLevel.LOW);
             }
-          }, 2600);
+          }, 1000);
         }),
-        18000
+        8500
       );
 
       const parsed = JSON.parse((response.text ?? '{}').trim());
@@ -519,7 +519,7 @@ Reply directly in natural French to what the learner actually asked/said (follow
     }
   });
 
-  // 2. Generate 5 Key French Phrases for the active conversation
+  // 2. Generate 5 Key Italian Phrases for the active conversation
   app.post('/api/phrases', async (req, res) => {
     try {
       const { scenarioId, level, recentMessages } = req.body as {
@@ -534,15 +534,15 @@ Reply directly in natural French to what the learner actually asked/said (follow
 
       const contextLines = (recentMessages || [])
         .slice(-4)
-        .map((m) => `${m.sender === 'user' ? 'Learner' : 'Claire'}: ${String(m.text || '').slice(0, 300)}`)
+        .map((m) => `${m.sender === 'user' ? 'Learner' : 'Marco'}: ${String(m.text || '').slice(0, 300)}`)
         .join('\n');
 
       const response = await ai.models.generateContent({
         model: 'gemini-3.1-flash-lite',
-        contents: `Generate 5 practical spoken French phrases to practice.\nScenario: ${scenarioInfo}\nLevel: ${levelInfo}\nRecent chat:\n${contextLines || 'Opening'}`,
+        contents: `Generate 5 practical spoken Italian phrases to practice.\nScenario: ${scenarioInfo}\nLevel: ${levelInfo}\nRecent chat:\n${contextLines || 'Opening'}`,
         config: {
           systemInstruction:
-            'You are a native French coach. Return exactly 5 useful spoken French phrases matching the scenario and level, each with a concise simple-English meaning and a brief 1-sentence usage tip.',
+            'You are a native Italian coach. Return exactly 5 useful spoken Italian phrases matching the scenario and level, each with a concise simple-English meaning and a brief 1-sentence usage tip.',
           thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
           responseMimeType: 'application/json',
           responseSchema: {
@@ -550,25 +550,25 @@ Reply directly in natural French to what the learner actually asked/said (follow
             items: {
               type: Type.OBJECT,
               properties: {
-                french: { type: Type.STRING },
+                italian: { type: Type.STRING },
                 meaning: { type: Type.STRING },
                 usageNote: { type: Type.STRING },
               },
-              required: ['french', 'meaning', 'usageNote'],
+              required: ['italian', 'meaning', 'usageNote'],
             },
           },
         },
       });
 
       const items = JSON.parse((response.text ?? '[]').trim()) as Array<{
-        french: string;
+        italian: string;
         meaning: string;
         usageNote: string;
       }>;
 
       const phrases = items.slice(0, 5).map((item, idx) => ({
         id: `gen-${Date.now()}-${idx}`,
-        french: item.french,
+        italian: item.italian,
         meaning: item.meaning,
         usageNote: item.usageNote,
         memorized: false,
@@ -585,7 +585,7 @@ Reply directly in natural French to what the learner actually asked/said (follow
     }
   });
 
-  // 3A. Progressive Streaming TTS (raw L16 PCM 24kHz mono in Parisian French)
+  // 3A. Progressive Streaming TTS (raw L16 PCM 24kHz mono in Italian)
   app.post('/api/tts/stream', async (req, res) => {
     try {
       const { text, level, slow } = req.body as {
@@ -601,10 +601,10 @@ Reply directly in natural French to what the learner actually asked/said (follow
       const ai = getAiClient();
       const shouldSpeakSlow = Boolean(slow);
       const style = shouldSpeakSlow
-        ? 'Speak clear, warm standard Parisian French gently at a comfortable pace for a learner.'
+        ? 'Speak clear, warm standard Italian gently at a comfortable pace for a learner.'
         : level === 'beginner'
-        ? 'Speak clear, warm standard Parisian French at a natural, steady pace.'
-        : 'Friendly, articulate native Parisian French speaker at a natural conversational pace.';
+        ? 'Speak clear, warm standard Italian at a natural, steady pace.'
+        : 'Friendly, articulate native Italian speaker at a natural conversational pace.';
 
       let ttsClientClosed = false;
       res.on('close', () => {
@@ -630,7 +630,7 @@ Reply directly in natural French to what the learner actually asked/said (follow
           responseModalities: ['AUDIO'],
           speechConfig: {
             voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: 'Aoede' },
+              prebuiltVoiceConfig: { voiceName: 'Puck' },
             },
           },
         },
@@ -666,7 +666,7 @@ Reply directly in natural French to what the learner actually asked/said (follow
     }
   });
 
-  // 3B. Unary Text-to-Speech (WAV fallback in Parisian French)
+  // 3B. Unary Text-to-Speech (WAV fallback in Italian)
   app.post('/api/tts', async (req, res) => {
     try {
       const { text, level, slow } = req.body as {
@@ -682,10 +682,10 @@ Reply directly in natural French to what the learner actually asked/said (follow
       const ai = getAiClient();
       const shouldSpeakSlow = Boolean(slow);
       const style = shouldSpeakSlow
-        ? 'Speak clear, warm standard Parisian French gently at a comfortable pace for a learner.'
+        ? 'Speak clear, warm standard Italian gently at a comfortable pace for a learner.'
         : level === 'beginner'
-        ? 'Speak clear, warm standard Parisian French at a natural, steady pace.'
-        : 'Friendly, articulate native Parisian French speaker at a natural conversational pace.';
+        ? 'Speak clear, warm standard Italian at a natural, steady pace.'
+        : 'Friendly, articulate native Italian speaker at a natural conversational pace.';
 
       const response = await ai.models.generateContent({
         model: 'gemini-3.8-flash-lite-tts',
@@ -706,7 +706,7 @@ Reply directly in natural French to what the learner actually asked/said (follow
           responseModalities: ['AUDIO'],
           speechConfig: {
             voiceConfig: {
-              prebuiltVoiceConfig: { voiceName: 'Aoede' },
+              prebuiltVoiceConfig: { voiceName: 'Puck' },
             },
           },
         },
@@ -752,7 +752,7 @@ Reply directly in natural French to what the learner actually asked/said (follow
               },
             },
             {
-              text: 'Transcribe the spoken audio accurately in the exact language spoken (likely French or mixed with another language). Return ONLY the transcribed text without quotes or commentary. If the audio is silent or unintelligible, return an empty string.',
+              text: 'Transcribe the spoken audio accurately in the exact language spoken (likely Italian or mixed with another language). Return ONLY the transcribed text without quotes or commentary. If the audio is silent or unintelligible, return an empty string.',
             },
           ],
         },
@@ -766,7 +766,7 @@ Reply directly in natural French to what the learner actually asked/said (follow
     }
   });
 
-  // 5. On-demand Translation from French to any world language
+  // 5. On-demand Translation from Italian to any world language
   app.post('/api/translate', async (req, res) => {
     try {
       const { text, targetLanguageName } = req.body as {
@@ -779,7 +779,7 @@ Reply directly in natural French to what the learner actually asked/said (follow
       }
 
       const ai = getAiClient();
-      const systemInstruction = `Translate the user's French text accurately and naturally into ${targetLanguageName.slice(0, 80)}. Return ONLY the translated text with no quotes, labels, or commentary.`;
+      const systemInstruction = `Translate the user's Italian text accurately and naturally into ${targetLanguageName.slice(0, 80)}. Return ONLY the translated text with no quotes, labels, or commentary.`;
 
       let response;
       try {
@@ -813,6 +813,38 @@ Reply directly in natural French to what the learner actually asked/said (follow
     }
   });
 
+  const LOGO_FILES: Record<string, string> = {
+    english: 'english-logo.jpg',
+    italian: 'italian-logo.jpg',
+    french: 'french-logo.jpg',
+  };
+
+  const resolveLogosDir = () => {
+    const candidates = [
+      path.resolve(__dirname, 'dist', 'logos'),
+      path.resolve(__dirname, 'public', 'logos'),
+      path.resolve(process.cwd(), 'dist', 'logos'),
+      path.resolve(process.cwd(), 'public', 'logos'),
+    ];
+    for (const dir of candidates) {
+      if (fs.existsSync(dir)) return dir;
+    }
+    return isProd ? path.resolve(__dirname, 'dist', 'logos') : path.resolve(__dirname, 'public', 'logos');
+  };
+
+  app.get('/api/logos/:lang/download', (req, res) => {
+    const filename = LOGO_FILES[String(req.params.lang || '').toLowerCase()];
+    if (!filename) {
+      return res.status(404).json({ error: 'Logo not found.' });
+    }
+    return res.download(path.join(resolveLogosDir(), filename), filename);
+  });
+
+  app.get(['/logos', '/logos/'], (_req, res) => {
+    return res.sendFile(path.join(resolveLogosDir(), 'index.html'));
+  });
+
+async function startServer() {
   if (!isProd) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
@@ -835,4 +867,8 @@ Reply directly in natural French to what the learner actually asked/said (follow
   httpServer.headersTimeout = 66000;
 }
 
-startServer();
+if (!isVercel) {
+  startServer();
+}
+
+export default app;

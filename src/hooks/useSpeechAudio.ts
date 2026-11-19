@@ -107,7 +107,7 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
 
     const startSpeech = () => {
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'fr-FR';
+      utterance.lang = 'it-IT';
       utterance.rate = slow ? 0.78 : 0.96;
       utterance.onstart = () => setPlayingId(id);
       utterance.onend = () => setPlayingId((curr) => (curr === id ? null : curr));
@@ -185,7 +185,7 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
         return;
       }
 
-      // 2. Zero-data instant local French speech when liteMode is active
+      // 2. Zero-data instant local Italian speech when liteMode is active
       if (liteMode) {
         fallbackSpeak(id, text, useSlow || level === 'beginner');
         return;

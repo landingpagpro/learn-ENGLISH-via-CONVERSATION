@@ -18,7 +18,7 @@ interface PhrasesPanelProps {
   loadingAudioId: string | null;
   onPlayAudio: (opts: { id: string; text: string; level: ProficiencyLevel; slow?: boolean }) => void;
   onToggleMemorized: (phraseId: string) => void;
-  onUseInChat: (french: string) => void;
+  onUseInChat: (italian: string) => void;
   onRefreshPhrases: () => void;
   onCloseMobile?: () => void;
 }
@@ -38,12 +38,12 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
   const memorizedCount = phrases.filter((p) => p.memorized).length;
 
   return (
-    <div className="flex flex-col h-full bg-[#F6F4EF]">
+    <div className="flex flex-col h-full bg-[#F8FAFC]">
       {/* Header */}
-      <div className="h-14 px-4 bg-[#EEF2F7] border-b border-[#1E3A8A]/10 flex items-center justify-between gap-2 shrink-0">
+      <div className="h-14 px-4 bg-white border-b border-slate-200 flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
-          <BookOpen className="w-4 h-4 text-[#1E3A8A] shrink-0" />
-          <h3 className="font-display text-[15px] font-bold text-[#141B2D] truncate">
+          <BookOpen className="w-4 h-4 text-[#1E40AF] shrink-0" />
+          <h3 className="text-[15px] font-bold text-[#0F172A] truncate">
             5 Key Phrases
           </h3>
           <span className="text-xs font-medium text-[#64748B] tabular-nums shrink-0">
@@ -64,15 +64,15 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
       </div>
 
       {/* Refresh Phrases Action */}
-      <div className="px-4 py-3 border-b border-slate-900/8 bg-white flex items-center justify-between gap-2 shrink-0">
-        <p className="text-xs text-[#64748B]">
+      <div className="px-4 py-3 border-b border-slate-200 bg-[#EEF2F6] flex items-center justify-between gap-2 shrink-0">
+        <p className="text-xs text-[#475569]">
           Practice and use these in chat
         </p>
         <button
           type="button"
           onClick={onRefreshPhrases}
           disabled={isGenerating}
-          className="min-h-[36px] px-3 py-1.5 rounded-lg bg-[#EEF2FF] text-[#1E3A8A] hover:bg-[#E0E7FF] disabled:opacity-60 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          className="min-h-[36px] px-3 py-1.5 rounded-lg bg-[#EFF6FF] text-[#1E40AF] border border-[#1E40AF]/15 hover:bg-[#DBEAFE] disabled:opacity-60 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isGenerating ? 'animate-pulse' : ''}`} />
           <span>New Phrases</span>
@@ -91,8 +91,8 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
               key={phrase.id}
               className={`rounded-xl p-3.5 border transition-colors ${
                 phrase.memorized
-                  ? 'bg-[#EEF2FF]/75 border-[#1E3A8A]/30'
-                  : 'bg-white border-slate-900/10'
+                  ? 'bg-[#EFF6FF] border-[#1E40AF]/30'
+                  : 'bg-white border-slate-200'
               }`}
             >
               <div className="flex items-start justify-between gap-2 mb-1.5">
@@ -104,8 +104,8 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
                   onClick={() => onToggleMemorized(phrase.id)}
                   className={`min-h-[32px] px-2.5 py-1 rounded-md text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
                     phrase.memorized
-                      ? 'bg-[#1E3A8A] text-white'
-                      : 'bg-[#EEF2F7] text-[#475569] hover:bg-[#E2E8F0]'
+                      ? 'bg-[#1E40AF] text-white'
+                      : 'bg-[#EEF2F6] text-[#475569] hover:bg-[#E2E8F0]'
                   }`}
                 >
                   <Check className="w-3.5 h-3.5" />
@@ -113,11 +113,11 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
                 </button>
               </div>
 
-              <p className="font-display text-[15.5px] font-semibold text-[#141B2D] leading-snug mb-1.5">
-                {phrase.french}
+              <p className="text-[15.5px] font-semibold text-[#0F172A] leading-snug mb-1.5">
+                {phrase.italian}
               </p>
 
-              <p className="text-[13px] font-medium text-[#1E3A8A] leading-snug mb-1">
+              <p className="text-[13px] font-medium text-[#1E40AF] leading-snug mb-1">
                 {phrase.meaning}
               </p>
 
@@ -125,39 +125,39 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
                 {phrase.usageNote}
               </p>
 
-              <div className="flex items-center gap-2 pt-2 border-t border-slate-900/8">
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() =>
                     onPlayAudio({
                       id: audioId,
-                      text: phrase.french,
+                      text: phrase.italian,
                       level,
                       slow: level === 'beginner',
                     })
                   }
                   className={`flex-1 min-h-[38px] px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
                     isPlaying
-                      ? 'bg-[#1E3A8A] text-white'
-                      : 'bg-[#EEF2F7] text-[#141B2D] hover:bg-[#E2E8F0]'
+                      ? 'bg-[#1E40AF] text-white'
+                      : 'bg-[#EEF2F6] text-[#0F172A] hover:bg-[#E2E8F0]'
                   }`}
                 >
                   {isLoading ? (
-                    <Volume2 className="w-3.5 h-3.5 text-[#1E3A8A] animate-pulse" />
+                    <Volume2 className="w-3.5 h-3.5 text-[#1E40AF] animate-pulse" />
                   ) : isPlaying ? (
                     <Square className="w-3 h-3 fill-current" />
                   ) : (
-                    <Volume2 className="w-3.5 h-3.5 text-[#1E3A8A]" />
+                    <Volume2 className="w-3.5 h-3.5 text-[#1E40AF]" />
                   )}
                   <span>{isPlaying ? 'Stop' : 'Listen'}</span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => onUseInChat(phrase.french)}
-                  className="flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-[#EEF2F7] text-[#141B2D] hover:bg-[#E2E8F0] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  onClick={() => onUseInChat(phrase.italian)}
+                  className="flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-[#EEF2F6] text-[#0F172A] hover:bg-[#E2E8F0] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
-                  <CornerDownLeft className="w-3.5 h-3.5 text-[#1E3A8A]" />
+                  <CornerDownLeft className="w-3.5 h-3.5 text-[#1E40AF]" />
                   <span>Use in chat</span>
                 </button>
               </div>

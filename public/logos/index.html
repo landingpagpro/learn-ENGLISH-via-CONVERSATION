@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>تحميل شعارات التطبيقات — الإنجليزية والإيطالية والفرنسية</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: #f3efe6;
+        color: #141b2d;
+        padding: 24px 16px 48px;
+      }
+      .wrap { max-width: 900px; margin: 0 auto; }
+      h1 { font-size: 22px; margin: 0 0 8px; text-align: center; }
+      p.sub { font-size: 14px; color: #475569; margin: 0 0 24px; text-align: center; }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 18px;
+      }
+      .card {
+        background: #ffffff;
+        border: 1px solid rgba(20, 27, 45, 0.12);
+        border-radius: 16px;
+        padding: 18px;
+        text-align: center;
+      }
+      .card img {
+        width: 180px;
+        height: 180px;
+        object-fit: cover;
+        border-radius: 20px;
+        border: 1px solid rgba(20, 27, 45, 0.1);
+        display: block;
+        margin: 0 auto 14px;
+        background: #fff;
+      }
+      .card h2 { font-size: 16px; margin: 0 0 6px; }
+      .card p { font-size: 12px; color: #64748b; margin: 0 0 14px; }
+      .btn {
+        display: inline-block;
+        width: 100%;
+        padding: 11px 16px;
+        border-radius: 10px;
+        text-decoration: none;
+        font-size: 14px;
+        font-weight: 600;
+        color: #ffffff;
+        background: #1e3a8a;
+      }
+      .btn.en { background: #008069; }
+      .btn.it { background: #1e40af; }
+      .btn.fr { background: #1e3a8a; }
+      .back {
+        display: block;
+        margin: 24px auto 0;
+        text-align: center;
+        color: #1e3a8a;
+        font-size: 14px;
+        font-weight: 600;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>تحميل شعارات التطبيقات الثلاثة</h1>
+      <p class="sub">اضغط على زر التحميل تحت كل شعار لحفظه بصيغة JPG على هاتفك</p>
+      <div class="grid">
+        <div class="card">
+          <img src="/logos/english-logo.jpg" alt="Learn English via Conversation" />
+          <h2>النسخة الإنجليزية</h2>
+          <p>Learn English via Conversation</p>
+          <a class="btn en" href="/api/logos/english/download" download="english-logo.jpg">
+            تحميل شعار الإنجليزية
+          </a>
+        </div>
+        <div class="card">
+          <img src="/logos/italian-logo.jpg" alt="Learn Italian via Conversation" />
+          <h2>النسخة الإيطالية</h2>
+          <p>Learn Italian via Conversation</p>
+          <a class="btn it" href="/api/logos/italian/download" download="italian-logo.jpg">
+            تحميل شعار الإيطالية
+          </a>
+        </div>
+        <div class="card">
+          <img src="/logos/french-logo.jpg" alt="Français par la conversation" />
+          <h2>النسخة الفرنسية</h2>
+          <p>Français par la conversation</p>
+          <a class="btn fr" href="/api/logos/french/download" download="french-logo.jpg">
+            تحميل شعار الفرنسية
+          </a>
+        </div>
+      </div>
+      <a class="back" href="/">الرجوع إلى التطبيق</a>
+    </div>
+  </body>
+</html>

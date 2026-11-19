@@ -103,7 +103,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
   };
 
   return (
-    /* Force physical LTR alignment so User is on the RIGHT and Claire is on the LEFT */
+    /* Force physical LTR alignment so User is on the RIGHT and Marco is on the LEFT */
     <div dir="ltr" className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
       <div
         className={`flex flex-col max-w-[88%] sm:max-w-[76%] md:max-w-[70%] ${
@@ -114,8 +114,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
         <div
           className={`relative px-3.5 py-2.5 rounded-xl border ${
             isUser
-              ? 'bg-[#E0E7FF] border-[#C7D2FE]/90 text-[#141B2D] rounded-tr-[4px]'
-              : 'bg-white border-slate-900/10 text-[#141B2D] rounded-tl-[4px] shadow-[0_1px_2px_rgba(20,27,45,0.05)]'
+              ? 'bg-[#1E3A8A] border-[#1E3A8A] text-white rounded-tr-[4px]'
+              : 'bg-white border-slate-200 text-[#0F172A] rounded-tl-[4px] shadow-[0_1px_2px_rgba(15,23,42,0.05)]'
           }`}
         >
           <p
@@ -125,17 +125,17 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             {message.text}
           </p>
 
-          {/* Translation revealed inside Claire's bubble */}
+          {/* Translation revealed inside Marco's bubble */}
           {!isUser && selectedLanguage && showTranslation && (
             <div
               dir={selectedLanguage.dir}
-              className={`mt-2 pt-2 border-t border-slate-900/10 text-[13.5px] leading-relaxed text-[#334155] ${
+              className={`mt-2 pt-2 border-t border-slate-200 text-[13.5px] leading-relaxed text-[#334155] ${
                 selectedLanguage.dir === 'rtl' ? 'font-arabic' : ''
               }`}
             >
               {isTranslating && !activeTranslation ? (
                 <span dir="ltr" className="inline-flex items-center gap-1.5 text-xs text-[#64748B]">
-                  <Languages className="w-3.5 h-3.5 text-[#1E3A8A] animate-pulse" />
+                  <Languages className="w-3.5 h-3.5 text-[#1E40AF] animate-pulse" />
                   <span>Translating to {selectedLanguage.name}</span>
                 </span>
               ) : (
@@ -160,16 +160,16 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   }
                   className={`min-h-[34px] px-2.5 py-1 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
                     isPlayingMain
-                      ? 'bg-[#1E3A8A] text-white'
-                      : 'bg-[#EEF2F7] text-[#141B2D] hover:bg-[#E2E8F0]'
+                      ? 'bg-[#1E40AF] text-white'
+                      : 'bg-[#EEF2F6] text-[#0F172A] hover:bg-[#E2E8F0]'
                   }`}
                 >
                   {isLoadingMain ? (
-                    <Volume2 className="w-3.5 h-3.5 text-[#1E3A8A] animate-pulse" />
+                    <Volume2 className="w-3.5 h-3.5 text-[#1E40AF] animate-pulse" />
                   ) : isPlayingMain ? (
                     <Square className="w-3 h-3 fill-current" />
                   ) : (
-                    <Volume2 className="w-3.5 h-3.5 text-[#1E3A8A]" />
+                    <Volume2 className="w-3.5 h-3.5 text-[#1E40AF]" />
                   )}
                   <span>{isPlayingMain ? 'Stop' : 'Listen'}</span>
                 </button>
@@ -188,8 +188,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     title="Listen slowly"
                     className={`min-h-[34px] px-2 py-1 rounded-md text-[11px] font-medium flex items-center gap-1 transition-colors cursor-pointer ${
                       isPlayingSlow
-                        ? 'bg-[#1E3A8A] text-white'
-                        : 'bg-[#EEF2F7] text-[#475569] hover:bg-[#E2E8F0]'
+                        ? 'bg-[#1E40AF] text-white'
+                        : 'bg-[#EEF2F6] text-[#475569] hover:bg-[#E2E8F0]'
                     }`}
                   >
                     {isPlayingSlow ? (
@@ -205,21 +205,21 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   <button
                     type="button"
                     onClick={() => onOpenLanguagePicker(message.id)}
-                    className="min-h-[34px] px-2.5 py-1 rounded-md border border-slate-900/8 bg-[#EEF2F7] hover:bg-[#E2E8F0] text-[#475569] text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                    className="min-h-[34px] px-2.5 py-1 rounded-md border border-slate-200 bg-[#EEF2F6] hover:bg-[#E2E8F0] text-[#475569] text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
                   >
-                    <Languages className="w-3.5 h-3.5 shrink-0 text-[#1E3A8A]" />
+                    <Languages className="w-3.5 h-3.5 shrink-0 text-[#1E40AF]" />
                     <span>Choose translation language</span>
                     <ChevronDown className="w-3 h-3 shrink-0" />
                   </button>
                 ) : (
-                  <div className="inline-flex items-center rounded-md overflow-hidden border border-slate-900/10">
+                  <div className="inline-flex items-center rounded-md overflow-hidden border border-slate-200">
                     <button
                       type="button"
                       onClick={handleToggleTranslation}
                       className={`min-h-[34px] px-2.5 py-1 text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer ${
                         showTranslation
-                          ? 'bg-[#EEF2FF] text-[#1E3A8A]'
-                          : 'bg-[#EEF2F7] text-[#475569] hover:bg-[#E2E8F0]'
+                          ? 'bg-[#EFF6FF] text-[#1E40AF]'
+                          : 'bg-[#EEF2F6] text-[#475569] hover:bg-[#E2E8F0]'
                       }`}
                     >
                       <Languages className="w-3.5 h-3.5 shrink-0" />
@@ -232,7 +232,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                       onClick={() => onOpenLanguagePicker(message.id)}
                       title="Choose translation language"
                       aria-label="Choose translation language"
-                      className="min-h-[34px] px-1.5 py-1 bg-[#E2E8F0] hover:bg-[#CBD5E1] text-[#475569] flex items-center gap-0.5 transition-colors border-l border-slate-900/10 cursor-pointer"
+                      className="min-h-[34px] px-1.5 py-1 bg-[#E2E8F0] hover:bg-[#CBD5E1] text-[#475569] flex items-center gap-0.5 transition-colors border-l border-slate-200 cursor-pointer"
                     >
                       <Globe className="w-3.5 h-3.5" />
                       <ChevronDown className="w-3 h-3" />
@@ -245,37 +245,37 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             )}
 
             <div className="flex items-center gap-1 ml-auto">
-              <span className="text-[11px] text-[#64748B] tabular-nums">
+              <span className={`text-[11px] tabular-nums ${isUser ? 'text-blue-200' : 'text-[#64748B]'}`}>
                 {message.timestamp}
               </span>
-              {isUser && <CheckCheck className="w-3.5 h-3.5 text-[#1E3A8A]" />}
+              {isUser && <CheckCheck className="w-3.5 h-3.5 text-sky-300" />}
             </div>
           </div>
         </div>
 
-        {/* French Correction & Tip Card (shown below user's message if Claire spotted a mistake) */}
+        {/* Italian Correction & Tip Card (shown below user's message if Marco spotted a mistake) */}
         {isUser && message.correction && (
-          <div className="mt-1.5 w-full bg-white border border-amber-300/80 rounded-xl p-3 shadow-[0_1px_2px_rgba(20,27,45,0.05)]">
+          <div className="mt-1.5 w-full bg-white border border-amber-300/80 rounded-xl p-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)]">
             <div className="flex items-center justify-between gap-2 mb-1.5">
               <div className="flex items-center gap-1.5 text-amber-900">
-                <CheckCircle2 className="w-4 h-4 text-[#1E3A8A] shrink-0" />
+                <CheckCircle2 className="w-4 h-4 text-[#1E40AF] shrink-0" />
                 <span className="text-xs font-bold">
                   Correction &amp; Tip
                 </span>
               </div>
             </div>
 
-            {/* Corrected French Sentence with Audio Button */}
-            <div className="flex items-center justify-between gap-2 bg-[#F6F4EF] border border-slate-900/8 rounded-lg px-3 py-2 mb-2">
-              <p className="text-[14px] font-semibold text-[#1E3A8A] leading-snug">
-                {message.correction.correctedFrench}
+            {/* Corrected Italian Sentence with Audio Button */}
+            <div className="flex items-center justify-between gap-2 bg-[#F8FAFC] border border-slate-200 rounded-lg px-3 py-2 mb-2">
+              <p className="text-[14px] font-semibold text-[#1E40AF] leading-snug">
+                {message.correction.correctedItalian}
               </p>
               <button
                 type="button"
                 onClick={() =>
                   onPlayAudio({
                     id: correctionAudioId,
-                    text: message.correction!.correctedFrench,
+                    text: message.correction!.correctedItalian,
                     level,
                     slow: level === 'beginner',
                   })
@@ -283,8 +283,8 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 aria-label="Listen to correction"
                 className={`min-w-[36px] min-h-[36px] rounded-md flex items-center justify-center shrink-0 transition-colors cursor-pointer ${
                   isPlayingCorr
-                    ? 'bg-[#1E3A8A] text-white'
-                    : 'bg-white border border-slate-900/10 text-[#1E3A8A] hover:bg-[#EEF2FF]'
+                    ? 'bg-[#1E40AF] text-white'
+                    : 'bg-white border border-slate-200 text-[#1E40AF] hover:bg-[#EFF6FF]'
                 }`}
               >
                 {isLoadingCorr ? (
