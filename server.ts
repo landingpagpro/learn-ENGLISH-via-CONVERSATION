@@ -81,24 +81,24 @@ function formatServerError(err: unknown, fallbackMsg: string): { status: number;
 
 const SCENARIO_CONTEXT: Record<string, string> = {
   conversation:
-    'Open everyday Italian conversation on any topic the learner chooses. Keep the tone warm, natural, and engaging.',
+    'Open everyday English conversation on any topic the learner chooses. Keep the tone warm, natural, and engaging.',
   airport:
-    'At an Italian airport (Rome Fiumicino or Milan Malpensa — check-in desk, security, boarding gate, baggage claim). Act as a helpful travel partner or airport staff member.',
+    'At an international airport (check-in desk, security, boarding gate, baggage claim). Act as a helpful travel partner or airport staff member.',
   work:
-    'At an Italian workplace / studio. Act as a friendly Italian coworker chatting before a meeting, discussing tasks, deadlines, and teamwork.',
+    'At a modern workplace. Act as a friendly coworker chatting before a meeting, discussing tasks, deadlines, and teamwork.',
   doctor:
-    'At an Italian clinic / farmacia. Act as a warm, reassuring Italian doctor asking about symptoms and explaining next steps clearly.',
+    'At a medical clinic. Act as a warm, reassuring doctor asking about symptoms and explaining next steps clearly.',
   meeting:
-    'Meeting someone new at a casual social gathering or piazza in Italy. Act as a friendly Italian conversation partner who enjoys making new friends and sharing culture.',
+    'Meeting someone new at a casual social gathering or coffee shop. Act as a friendly conversation partner who enjoys making new friends.',
 };
 
 const LEVEL_INSTRUCTIONS: Record<string, string> = {
   beginner:
-    'BEGINNER (A1-A2): Use very simple, high-frequency Italian words and short sentences (1-2 short sentences max). Avoid complex idioms or slang. Speak gently and patiently.',
+    'BEGINNER (A1-A2): Use very simple, high-frequency English words and short sentences (1-2 short sentences max). Avoid complex idioms or slang. Speak gently and patiently.',
   intermediate:
-    'INTERMEDIATE (B1-B2): Use natural everyday conversational Italian, common expressions, and 2-3 friendly sentences. Ask engaging follow-up questions.',
+    'INTERMEDIATE (B1-B2): Use natural everyday conversational English, common expressions, and 2-3 friendly sentences. Ask engaging follow-up questions.',
   advanced:
-    'ADVANCED (C1-C2): Use authentic, idiomatic Italian with natural expressions, subtle humor, and rich conversational depth.',
+    'ADVANCED (C1-C2): Use authentic, idiomatic English with natural expressions, subtle humor, and rich conversational depth.',
 };
 
 async function startServer() {
@@ -128,14 +128,14 @@ async function startServer() {
       return raw.slice(start, end).trim();
     };
 
-    const replyItalianRaw = extract('[REPLY]', ['[MISTAKE]', '[CORRECTED]', '[EXPLAIN]', '[TRANS]', '[HINT]']);
-    const replyItalian =
-      replyItalianRaw ||
+    const replyEnglishRaw = extract('[REPLY]', ['[MISTAKE]', '[CORRECTED]', '[EXPLAIN]', '[TRANS]', '[HINT]']);
+    const replyEnglish =
+      replyEnglishRaw ||
       (raw.indexOf('[REPLY]') === -1
         ? raw.split(/\[(?:MISTAKE|CORRECTED|EXPLAIN|TRANS|HINT)\]/)[0].trim()
         : '');
     const mistakeFlag = extract('[MISTAKE]', ['[CORRECTED]', '[EXPLAIN]', '[TRANS]', '[HINT]']).toUpperCase();
-    const correctedItalian = extract('[CORRECTED]', ['[EXPLAIN]', '[TRANS]', '[HINT]']);
+    const correctedEnglish = extract('[CORRECTED]', ['[EXPLAIN]', '[TRANS]', '[HINT]']);
     const explanation = extract('[EXPLAIN]', ['[TRANS]', '[HINT]']);
     const replyTranslation = extract('[TRANS]', ['[HINT]']);
     const suggestedNextReply = extract('[HINT]', []);
@@ -143,13 +143,13 @@ async function startServer() {
     const hasMistake =
       mistakeFlag.startsWith('YES') ||
       mistakeFlag.startsWith('TRUE') ||
-      (correctedItalian.length > 0 && correctedItalian.toLowerCase() !== 'none');
+      (correctedEnglish.length > 0 && correctedEnglish.toLowerCase() !== 'none');
 
     return {
       hasMistake,
-      correctedItalian: hasMistake && correctedItalian.toLowerCase() !== 'none' ? correctedItalian : '',
+      correctedEnglish: hasMistake && correctedEnglish.toLowerCase() !== 'none' ? correctedEnglish : '',
       explanation: hasMistake && explanation.toLowerCase() !== 'none' ? explanation : '',
-      replyItalian,
+      replyEnglish,
       replyTranslation,
       suggestedNextReply,
     };
@@ -158,7 +158,7 @@ async function startServer() {
   function buildChatPrompts(
     scenarioId: string,
     level: string,
-    history: Array<{ sender: 'user' | 'marco'; text: string }>,
+    history: Array<{ sender: 'user' | 'alex'; text: string }>,
     userMessage: string
   ) {
     const scenarioInfo = SCENARIO_CONTEXT[scenarioId] || SCENARIO_CONTEXT.conversation;
@@ -195,7 +195,7 @@ async function startServer() {
       const { scenarioId, level, history, userMessage, targetLanguageName } = req.body as {
         scenarioId: string;
         level: string;
-        history: Array<{ sender: 'user' | 'marco'; text: string }>;
+        history: Array<{ sender: 'user' | 'alex'; text: string }>;
         userMessage: string;
         targetLanguageName?: string;
       };
@@ -212,25 +212,25 @@ async function startServer() {
         ? `[TRANS]\nAccurate natural translation of [REPLY] into ${transLang}\n`
         : '';
 
-      const systemInstruction = `You are a friendly native Italian conversation partner in "Learn Italian via Conversation".
+      const systemInstruction = `You are a friendly native English conversation partner in "Learn English via Conversation".
 Context: ${scenarioInfo}
 Level: ${levelInfo}
 Rules:
-- Reply directly in natural Italian to what the learner actually asked or said. Follow their topic even if it changes (sports, food, culture, travel, daily life).
-- If they write broken Italian or mix another language, understand their intent, answer directly in Italian, and teach the natural Italian phrasing in [CORRECTED] + [EXPLAIN].
-- Keep [REPLY] concise (1-2 short natural Italian sentences + 1 short follow-up question in Italian).
+- Reply directly in natural English to what the learner actually asked or said. Follow their topic even if it changes (sports, food, culture, travel, daily life).
+- If they write broken English or mix another language, understand their intent, answer directly in English, and teach the natural English phrasing in [CORRECTED] + [EXPLAIN].
+- Keep [REPLY] concise (1-2 short natural English sentences + 1 short follow-up question in English).
 
 Use ONLY these exact markers in order, starting immediately with [REPLY]:
 [REPLY]
-Your direct Italian reply
+Your direct English reply
 [MISTAKE]
 YES or NO (ignore minor punctuation/capitalization; if NO, omit [CORRECTED] and [EXPLAIN])
 [CORRECTED]
-Natural Italian version of learner's message (only if YES)
+Natural English version of learner's message (only if YES)
 [EXPLAIN]
 1 short simple-English grammar tip explaining why (only if YES)
 ${transMarkerInstruction}[HINT]
-1 short Italian reply the learner can say next`;
+1 short English reply the learner can say next`;
 
       const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
         let timer: NodeJS.Timeout;
@@ -340,7 +340,7 @@ ${transMarkerInstruction}[HINT]
                 if (!replyCompletedSent && finalReplyChunk) {
                   replyCompletedSent = true;
                   lastSentReply = finalReplyChunk;
-                  res.write(`data: ${JSON.stringify({ type: 'reply_complete', replyItalian: finalReplyChunk })}\n\n`);
+                  res.write(`data: ${JSON.stringify({ type: 'reply_complete', replyEnglish: finalReplyChunk })}\n\n`);
                 }
               } else {
                 afterTag = afterTag.replace(/\n?\[[A-Z_]{0,12}$/, '');
@@ -351,7 +351,7 @@ ${transMarkerInstruction}[HINT]
                   res.write(`data: ${JSON.stringify({ type: 'reply_delta', delta })}\n\n`);
                 } else if (cleanReply && cleanReply !== lastSentReply) {
                   lastSentReply = cleanReply;
-                  res.write(`data: ${JSON.stringify({ type: 'reply', replyItalian: cleanReply })}\n\n`);
+                  res.write(`data: ${JSON.stringify({ type: 'reply', replyEnglish: cleanReply })}\n\n`);
                 }
               }
             }
@@ -378,8 +378,8 @@ ${transMarkerInstruction}[HINT]
       }
 
       const parsed = parseStreamedSections(fullText);
-      if (!parsed.replyItalian && lastSentReply) {
-        parsed.replyItalian = lastSentReply;
+      if (!parsed.replyEnglish && lastSentReply) {
+        parsed.replyEnglish = lastSentReply;
       }
 
       res.write(`data: ${JSON.stringify({ type: 'done', ...parsed })}\n\n`);
@@ -401,7 +401,7 @@ ${transMarkerInstruction}[HINT]
       const { scenarioId, level, history, userMessage, targetLanguageName } = req.body as {
         scenarioId: string;
         level: string;
-        history: Array<{ sender: 'user' | 'marco'; text: string }>;
+        history: Array<{ sender: 'user' | 'alex'; text: string }>;
         userMessage: string;
         targetLanguageName?: string;
       };
@@ -414,24 +414,24 @@ ${transMarkerInstruction}[HINT]
       const { scenarioInfo, levelInfo, prompt } = buildChatPrompts(scenarioId, level, history, userMessage);
       const transLang = targetLanguageName?.trim();
 
-      const systemInstruction = `You are a friendly native Italian conversation partner.
+      const systemInstruction = `You are a friendly native English conversation partner.
 Context: ${scenarioInfo}
 Level: ${levelInfo}
-Reply directly in natural Italian to what the learner actually asked/said (follow their topic even if it changes). Keep replyItalian concise (1-2 short Italian sentences + 1 short Italian question). Set hasMistake=true only for real Italian mistakes or non-Italian words, and give correctedItalian + 1 short encouraging explanation in English. Always give suggestedNextReply in natural Italian.${
-        transLang ? ` Also provide replyTranslation of replyItalian in ${transLang}.` : ''
+Reply directly in natural English to what the learner actually asked/said (follow their topic even if it changes). Keep replyEnglish concise (1-2 short English sentences + 1 short English question). Set hasMistake=true only for real English mistakes or non-English words, and give correctedEnglish + 1 short encouraging explanation in simple English. Always give suggestedNextReply in natural English.${
+        transLang ? ` Also provide replyTranslation of replyEnglish in ${transLang}.` : ''
       }`;
 
       const schemaProperties: Record<string, { type: Type }> = {
-        replyItalian: { type: Type.STRING },
+        replyEnglish: { type: Type.STRING },
         hasMistake: { type: Type.BOOLEAN },
-        correctedItalian: { type: Type.STRING },
+        correctedEnglish: { type: Type.STRING },
         explanation: { type: Type.STRING },
         suggestedNextReply: { type: Type.STRING },
       };
       const requiredFields = [
-        'replyItalian',
+        'replyEnglish',
         'hasMistake',
-        'correctedItalian',
+        'correctedEnglish',
         'explanation',
         'suggestedNextReply',
       ];
@@ -519,7 +519,7 @@ Reply directly in natural Italian to what the learner actually asked/said (follo
     }
   });
 
-  // 2. Generate 5 Key Italian Phrases for the active conversation
+  // 2. Generate 5 Key English Phrases for the active conversation
   app.post('/api/phrases', async (req, res) => {
     try {
       const { scenarioId, level, recentMessages } = req.body as {
@@ -534,15 +534,15 @@ Reply directly in natural Italian to what the learner actually asked/said (follo
 
       const contextLines = (recentMessages || [])
         .slice(-4)
-        .map((m) => `${m.sender === 'user' ? 'Learner' : 'Marco'}: ${String(m.text || '').slice(0, 300)}`)
+        .map((m) => `${m.sender === 'user' ? 'Learner' : 'Alex'}: ${String(m.text || '').slice(0, 300)}`)
         .join('\n');
 
       const response = await ai.models.generateContent({
         model: 'gemini-3.1-flash-lite',
-        contents: `Generate 5 practical spoken Italian phrases to practice.\nScenario: ${scenarioInfo}\nLevel: ${levelInfo}\nRecent chat:\n${contextLines || 'Opening'}`,
+        contents: `Generate 5 practical spoken English phrases to practice.\nScenario: ${scenarioInfo}\nLevel: ${levelInfo}\nRecent chat:\n${contextLines || 'Opening'}`,
         config: {
           systemInstruction:
-            'You are a native Italian coach. Return exactly 5 useful spoken Italian phrases matching the scenario and level, each with a concise simple-English meaning and a brief 1-sentence usage tip in English.',
+            'You are a native English coach. Return exactly 5 useful spoken English phrases matching the scenario and level, each with a concise simple-English meaning and a brief 1-sentence usage tip.',
           thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
           responseMimeType: 'application/json',
           responseSchema: {
@@ -550,25 +550,25 @@ Reply directly in natural Italian to what the learner actually asked/said (follo
             items: {
               type: Type.OBJECT,
               properties: {
-                italian: { type: Type.STRING },
+                english: { type: Type.STRING },
                 meaning: { type: Type.STRING },
                 usageNote: { type: Type.STRING },
               },
-              required: ['italian', 'meaning', 'usageNote'],
+              required: ['english', 'meaning', 'usageNote'],
             },
           },
         },
       });
 
       const items = JSON.parse((response.text ?? '[]').trim()) as Array<{
-        italian: string;
+        english: string;
         meaning: string;
         usageNote: string;
       }>;
 
       const phrases = items.slice(0, 5).map((item, idx) => ({
         id: `gen-${Date.now()}-${idx}`,
-        italian: item.italian,
+        english: item.english,
         meaning: item.meaning,
         usageNote: item.usageNote,
         memorized: false,
@@ -585,7 +585,7 @@ Reply directly in natural Italian to what the learner actually asked/said (follo
     }
   });
 
-  // 3A. Progressive Streaming TTS (raw L16 PCM 24kHz mono in Italian)
+  // 3A. Progressive Streaming TTS (raw L16 PCM 24kHz mono in English)
   app.post('/api/tts/stream', async (req, res) => {
     try {
       const { text, level, slow } = req.body as {
@@ -601,10 +601,10 @@ Reply directly in natural Italian to what the learner actually asked/said (follo
       const ai = getAiClient();
       const shouldSpeakSlow = Boolean(slow);
       const style = shouldSpeakSlow
-        ? 'Speak clear, warm standard Italian gently at a comfortable pace for a learner.'
+        ? 'Speak clear, warm standard American English gently at a comfortable pace for a learner.'
         : level === 'beginner'
-        ? 'Speak clear, warm standard Italian at a natural, steady pace.'
-        : 'Friendly, articulate native Italian speaker at a natural conversational pace.';
+        ? 'Speak clear, warm standard American English at a natural, steady pace.'
+        : 'Friendly, articulate native American English speaker at a natural conversational pace.';
 
       let ttsClientClosed = false;
       res.on('close', () => {
@@ -666,7 +666,7 @@ Reply directly in natural Italian to what the learner actually asked/said (follo
     }
   });
 
-  // 3B. Unary Text-to-Speech (WAV fallback in Italian)
+  // 3B. Unary Text-to-Speech (WAV fallback in English)
   app.post('/api/tts', async (req, res) => {
     try {
       const { text, level, slow } = req.body as {
@@ -682,10 +682,10 @@ Reply directly in natural Italian to what the learner actually asked/said (follo
       const ai = getAiClient();
       const shouldSpeakSlow = Boolean(slow);
       const style = shouldSpeakSlow
-        ? 'Speak clear, warm standard Italian gently at a comfortable pace for a learner.'
+        ? 'Speak clear, warm standard American English gently at a comfortable pace for a learner.'
         : level === 'beginner'
-        ? 'Speak clear, warm standard Italian at a natural, steady pace.'
-        : 'Friendly, articulate native Italian speaker at a natural conversational pace.';
+        ? 'Speak clear, warm standard American English at a natural, steady pace.'
+        : 'Friendly, articulate native American English speaker at a natural conversational pace.';
 
       const response = await ai.models.generateContent({
         model: 'gemini-3.8-flash-lite-tts',
@@ -752,7 +752,7 @@ Reply directly in natural Italian to what the learner actually asked/said (follo
               },
             },
             {
-              text: 'Transcribe the spoken audio accurately in the exact language spoken (likely Italian or mixed with another language). Return ONLY the transcribed text without quotes or commentary. If the audio is silent or unintelligible, return an empty string.',
+              text: 'Transcribe the spoken audio accurately in the exact language spoken (likely English or mixed with another language). Return ONLY the transcribed text without quotes or commentary. If the audio is silent or unintelligible, return an empty string.',
             },
           ],
         },
@@ -766,7 +766,7 @@ Reply directly in natural Italian to what the learner actually asked/said (follo
     }
   });
 
-  // 5. On-demand Translation from Italian to any world language
+  // 5. On-demand Translation from English to any world language
   app.post('/api/translate', async (req, res) => {
     try {
       const { text, targetLanguageName } = req.body as {
@@ -779,7 +779,7 @@ Reply directly in natural Italian to what the learner actually asked/said (follo
       }
 
       const ai = getAiClient();
-      const systemInstruction = `Translate the user's Italian text accurately and naturally into ${targetLanguageName.slice(0, 80)}. Return ONLY the translated text with no quotes, labels, or commentary.`;
+      const systemInstruction = `Translate the user's English text accurately and naturally into ${targetLanguageName.slice(0, 80)}. Return ONLY the translated text with no quotes, labels, or commentary.`;
 
       let response;
       try {
