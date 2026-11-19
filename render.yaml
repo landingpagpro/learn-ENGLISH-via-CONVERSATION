@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: learn-english-via-conversation
+    name: learn-italian-via-conversation
     runtime: node
     plan: free
     buildCommand: npm install --include=dev && npm run build

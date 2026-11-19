@@ -107,7 +107,7 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
 
     const startSpeech = () => {
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-US';
+      utterance.lang = 'it-IT';
       utterance.rate = slow ? 0.78 : 0.98;
       utterance.onstart = () => setPlayingId(id);
       utterance.onend = () => setPlayingId((curr) => (curr === id ? null : curr));

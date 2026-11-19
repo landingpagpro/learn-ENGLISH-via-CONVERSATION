@@ -18,7 +18,7 @@ interface PhrasesPanelProps {
   loadingAudioId: string | null;
   onPlayAudio: (opts: { id: string; text: string; level: ProficiencyLevel; slow?: boolean }) => void;
   onToggleMemorized: (phraseId: string) => void;
-  onUseInChat: (english: string) => void;
+  onUseInChat: (italian: string) => void;
   onRefreshPhrases: () => void;
   onCloseMobile?: () => void;
 }
@@ -38,15 +38,15 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
   const memorizedCount = phrases.filter((p) => p.memorized).length;
 
   return (
-    <div className="flex flex-col h-full bg-[#F7F8FA]">
+    <div className="flex flex-col h-full bg-[#F8FAFC]">
       {/* Header */}
-      <div className="h-14 px-4 bg-[#F0F2F5] border-b border-black/10 flex items-center justify-between gap-2 shrink-0">
+      <div className="h-14 px-4 bg-white border-b border-slate-200/80 flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
-          <BookOpen className="w-4 h-4 text-[#008069] shrink-0" />
-          <h3 className="text-[15px] font-bold text-[#111B21] truncate">
+          <BookOpen className="w-4 h-4 text-[#1E3A8A] shrink-0" />
+          <h3 className="font-display text-[15px] font-bold text-slate-900 truncate">
             5 Key Phrases
           </h3>
-          <span className="text-xs font-medium text-[#667781] tabular-nums shrink-0">
+          <span className="text-xs font-medium text-slate-500 tabular-nums shrink-0">
             {memorizedCount}/{phrases.length}
           </span>
         </div>
@@ -56,7 +56,7 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
             type="button"
             onClick={onCloseMobile}
             aria-label="Close"
-            className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center rounded-full text-[#54656F] hover:bg-black/5 cursor-pointer"
+            className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -64,15 +64,15 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
       </div>
 
       {/* Refresh Phrases Action */}
-      <div className="px-4 py-3 border-b border-black/8 bg-white flex items-center justify-between gap-2 shrink-0">
-        <p className="text-xs text-[#667781]">
+      <div className="px-4 py-3 border-b border-slate-200/80 bg-white flex items-center justify-between gap-2 shrink-0">
+        <p className="text-xs text-slate-500">
           Practice and use these in chat
         </p>
         <button
           type="button"
           onClick={onRefreshPhrases}
           disabled={isGenerating}
-          className="min-h-[36px] px-3 py-1.5 rounded-xl bg-[#E7FCE3] text-[#008069] hover:bg-[#D9FDD3] disabled:opacity-60 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          className="min-h-[36px] px-3 py-1.5 rounded-xl bg-blue-50 text-[#1E3A8A] hover:bg-blue-100 disabled:opacity-60 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isGenerating ? 'animate-pulse' : ''}`} />
           <span>New Phrases</span>
@@ -91,12 +91,12 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
               key={phrase.id}
               className={`rounded-2xl p-3.5 border transition-colors ${
                 phrase.memorized
-                  ? 'bg-[#F0FDF4] border-[#008069]/30'
-                  : 'bg-white border-black/8'
+                  ? 'bg-emerald-50/80 border-emerald-200'
+                  : 'bg-white border-slate-200/80'
               }`}
             >
               <div className="flex items-start justify-between gap-2 mb-1.5">
-                <span className="text-[11px] font-semibold text-[#667781] tabular-nums">
+                <span className="text-[11px] font-semibold text-slate-400 tabular-nums">
                   0{index + 1}.
                 </span>
                 <button
@@ -104,8 +104,8 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
                   onClick={() => onToggleMemorized(phrase.id)}
                   className={`min-h-[32px] px-2.5 py-1 rounded-lg text-[11px] font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
                     phrase.memorized
-                      ? 'bg-[#008069] text-white'
-                      : 'bg-[#F0F2F5] text-[#54656F] hover:bg-[#E2E6EA]'
+                      ? 'bg-[#047857] text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200/80'
                   }`}
                 >
                   <Check className="w-3.5 h-3.5" />
@@ -113,51 +113,51 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
                 </button>
               </div>
 
-              <p className="text-[15px] font-semibold text-[#111B21] leading-snug mb-1.5">
-                {phrase.english}
+              <p className="text-[15px] font-semibold text-slate-900 leading-snug mb-1.5">
+                {phrase.italian}
               </p>
 
-              <p className="text-[13px] font-medium text-[#008069] leading-snug mb-1">
+              <p className="text-[13px] font-medium text-[#1E3A8A] leading-snug mb-1">
                 {phrase.meaning}
               </p>
 
-              <p className="text-xs text-[#667781] leading-relaxed mb-3">
+              <p className="text-xs text-slate-500 leading-relaxed mb-3">
                 {phrase.usageNote}
               </p>
 
-              <div className="flex items-center gap-2 pt-2 border-t border-black/6">
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() =>
                     onPlayAudio({
                       id: audioId,
-                      text: phrase.english,
+                      text: phrase.italian,
                       level,
                       slow: level === 'beginner',
                     })
                   }
                   className={`flex-1 min-h-[38px] px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
                     isPlaying
-                      ? 'bg-[#008069] text-white'
-                      : 'bg-[#F0F2F5] text-[#111B21] hover:bg-[#E2E6EA]'
+                      ? 'bg-[#1E3A8A] text-white'
+                      : 'bg-slate-100 text-slate-800 hover:bg-slate-200/80'
                   }`}
                 >
                   {isLoading ? (
-                    <Volume2 className="w-3.5 h-3.5 text-[#008069] animate-pulse" />
+                    <Volume2 className="w-3.5 h-3.5 text-[#1E3A8A] animate-pulse" />
                   ) : isPlaying ? (
                     <Square className="w-3 h-3 fill-current" />
                   ) : (
-                    <Volume2 className="w-3.5 h-3.5 text-[#008069]" />
+                    <Volume2 className="w-3.5 h-3.5 text-[#1E3A8A]" />
                   )}
                   <span>{isPlaying ? 'Stop' : 'Listen'}</span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => onUseInChat(phrase.english)}
-                  className="flex-1 min-h-[38px] px-3 py-1.5 rounded-xl bg-[#F0F2F5] text-[#111B21] hover:bg-[#E2E6EA] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  onClick={() => onUseInChat(phrase.italian)}
+                  className="flex-1 min-h-[38px] px-3 py-1.5 rounded-xl bg-slate-100 text-slate-800 hover:bg-slate-200/80 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
-                  <CornerDownLeft className="w-3.5 h-3.5 text-[#008069]" />
+                  <CornerDownLeft className="w-3.5 h-3.5 text-[#1E3A8A]" />
                   <span>Use in chat</span>
                 </button>
               </div>

@@ -177,15 +177,15 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   };
 
   return (
-    <div className="bg-[#F0F2F5] border-t border-black/10 px-2.5 sm:px-4 py-2 pb-safe shrink-0">
+    <div className="bg-white/95 backdrop-blur-md border-t border-slate-200/80 px-2.5 sm:px-4 py-2.5 pb-safe shrink-0">
       {/* Inline Hint Drawer */}
       {showHint && suggestedHint && (
-        <div className="mb-2 bg-white border border-black/8 rounded-xl px-3 py-2 flex items-center justify-between gap-2 shadow-xs">
+        <div className="mb-2 bg-[#F8FAFC] border border-slate-200/90 rounded-xl px-3 py-2 flex items-center justify-between gap-2 shadow-xs">
           <div className="min-w-0">
-            <span className="text-[11px] font-semibold text-[#008069] block">
+            <span className="text-[11px] font-semibold text-[#1E3A8A] block">
               Suggested reply:
             </span>
-            <p className="text-sm text-[#111B21] truncate">
+            <p className="text-sm text-slate-900 truncate">
               {suggestedHint}
             </p>
           </div>
@@ -196,7 +196,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
               setShowHint(false);
               inputRef.current?.focus();
             }}
-            className="px-3 py-1.5 rounded-lg bg-[#E7FCE3] text-[#008069] text-xs font-semibold whitespace-nowrap shrink-0 cursor-pointer hover:bg-[#D9FDD3]"
+            className="px-3 py-1.5 rounded-lg bg-blue-50 text-[#1E3A8A] text-xs font-semibold whitespace-nowrap shrink-0 cursor-pointer hover:bg-blue-100"
           >
             Use
           </button>
@@ -219,7 +219,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
 
       {/* Active Voice Recording Bar vs Standard Composer */}
       {isRecording ? (
-        <div className="flex items-center justify-between gap-2 bg-white rounded-2xl px-3 py-1.5 min-h-[48px] border border-rose-200">
+        <div className="flex items-center justify-between gap-2 bg-slate-50 rounded-2xl px-3 py-1.5 min-h-[48px] border border-rose-200">
           <button
             type="button"
             onClick={cancelRecording}
@@ -231,18 +231,18 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
 
           <div className="flex items-center gap-2 flex-1 justify-center">
             <Mic className="w-4 h-4 text-rose-500 shrink-0" />
-            <span className="text-sm font-semibold text-[#111B21] tabular-nums">
+            <span className="text-sm font-semibold text-slate-900 tabular-nums">
               {formatTimer(recordingSeconds)}
             </span>
-            <span className="text-xs text-[#667781] truncate">
-              Speak in English now
+            <span className="text-xs text-slate-500 truncate">
+              Speak in Italian now
             </span>
           </div>
 
           <button
             type="button"
             onClick={finishAndTranscribe}
-            className="min-h-[44px] px-4 rounded-xl bg-[#008069] text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-[#006E5A] active:scale-[0.98] transition-all cursor-pointer whitespace-nowrap"
+            className="min-h-[44px] px-4 rounded-xl bg-[#1E3A8A] text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-[#1E40AF] active:scale-[0.98] transition-all cursor-pointer whitespace-nowrap"
           >
             <Square className="w-3.5 h-3.5 fill-current" />
             <span>Done</span>
@@ -258,8 +258,8 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
               aria-label="Suggested reply"
               className={`min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors shrink-0 cursor-pointer ${
                 showHint
-                  ? 'bg-[#E7FCE3] text-[#008069]'
-                  : 'text-[#54656F] hover:bg-black/5'
+                  ? 'bg-blue-50 text-[#1E3A8A]'
+                  : 'text-slate-500 hover:bg-slate-100'
               }`}
             >
               <Lightbulb className="w-5 h-5" />
@@ -277,9 +277,9 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
               placeholder={
                 isTranscribing
                   ? 'Transcribing your voice'
-                  : 'Type in English or tap the mic'
+                  : 'Type in Italian or tap the mic'
               }
-              className="w-full min-h-[44px] bg-white rounded-2xl px-4 py-2.5 text-[15px] text-[#111B21] placeholder:text-[#667781] border border-black/8 focus:outline-none focus:border-[#008069]"
+              className="w-full min-h-[44px] bg-[#F8FAFC] rounded-2xl px-4 py-2.5 text-[15px] text-slate-900 placeholder:text-slate-400 border border-slate-200 focus:outline-none focus:bg-white focus:border-[#1E3A8A]"
             />
           </div>
 
@@ -290,7 +290,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             disabled={disabled || isTranscribing}
             title="Speak with microphone"
             aria-label="Speak with microphone"
-            className="min-w-[44px] min-h-[44px] rounded-full bg-white border border-black/10 text-[#008069] hover:bg-[#E7FCE3] active:scale-[0.96] disabled:opacity-50 flex items-center justify-center transition-all shrink-0 cursor-pointer"
+            className="min-w-[44px] min-h-[44px] rounded-full bg-[#F8FAFC] border border-slate-200 text-[#1E3A8A] hover:bg-blue-50 active:scale-[0.96] disabled:opacity-50 flex items-center justify-center transition-all shrink-0 cursor-pointer"
           >
             <Mic className={`w-5 h-5 ${isTranscribing ? 'animate-pulse' : ''}`} />
           </button>
@@ -301,7 +301,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             disabled={!inputText.trim() || disabled || isTranscribing}
             title="Send"
             aria-label="Send message"
-            className="min-w-[44px] min-h-[44px] rounded-full bg-[#008069] text-white hover:bg-[#006E5A] active:scale-[0.96] disabled:bg-[#B8C4C9] disabled:cursor-not-allowed flex items-center justify-center transition-all shrink-0 cursor-pointer"
+            className="min-w-[44px] min-h-[44px] rounded-full bg-[#1E3A8A] text-white hover:bg-[#1E40AF] active:scale-[0.96] disabled:bg-slate-300 disabled:cursor-not-allowed flex items-center justify-center transition-all shrink-0 cursor-pointer"
           >
             <Send className="w-5 h-5" />
           </button>

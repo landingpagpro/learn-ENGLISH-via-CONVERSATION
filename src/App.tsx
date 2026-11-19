@@ -11,10 +11,10 @@ import { APP_LOGO_URL, INITIAL_PHRASES, LEVELS, SCENARIOS } from './data/scenari
 import { useSpeechAudio } from './hooks/useSpeechAudio';
 import { ChatMessage, ConversationThread, ProficiencyLevel, ScenarioId } from './types';
 
-const PHRASES_KEY = 'le_conv_phrases_v1';
-const AUTOSPEAK_KEY = 'le_conv_autospeak_v1';
-const LITEMODE_KEY = 'le_conv_litemode_v1';
-const TRANSLANG_KEY = 'le_conv_trans_lang_v1';
+const PHRASES_KEY = 'le_it_phrases_v1';
+const AUTOSPEAK_KEY = 'le_it_autospeak_v1';
+const LITEMODE_KEY = 'le_it_litemode_v1';
+const TRANSLANG_KEY = 'le_it_trans_lang_v1';
 const MAX_MESSAGES_PER_THREAD = 30;
 
 function formatTimeNow(): string {
@@ -41,7 +41,7 @@ export default function App() {
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('chat');
   const [phrasesDrawerOpen, setPhrasesDrawerOpen] = useState(false);
 
-  // Automatically clear any old stored conversations on startup
+  // Automatically clear any old stored conversations on startup & warm up server health
   useEffect(() => {
     try {
       [
@@ -54,6 +54,10 @@ export default function App() {
         'alex_english_autospeak_v1',
         'alex_english_litemode_v1',
         'alex_english_trans_lang_v1',
+        'le_conv_phrases_v1',
+        'le_conv_autospeak_v1',
+        'le_conv_litemode_v1',
+        'le_conv_trans_lang_v1',
       ].forEach((k) => localStorage.removeItem(k));
     } catch {
       // Ignore storage errors
@@ -311,7 +315,7 @@ export default function App() {
                 ...latest.messages,
                 {
                   id: replyMsgId,
-                  sender: 'alex' as const,
+                  sender: 'marco' as const,
                   text: partialReply,
                   timestamp: formatTimeNow(),
                 },
@@ -329,15 +333,15 @@ export default function App() {
       };
 
       const applyCompletedReply = (payload: {
-        replyEnglish?: string;
+        replyItalian?: string;
         hasMistake?: boolean;
-        correctedEnglish?: string;
+        correctedItalian?: string;
         explanation?: string;
         replyTranslation?: string;
         suggestedNextReply?: string;
       }) => {
         setIsTyping(false);
-        const finalReply = payload.replyEnglish || '';
+        const finalReply = payload.replyItalian || '';
         if (finalReply && autoSpeakRef.current && !autoSpoken) {
           autoSpoken = true;
           play({
@@ -350,11 +354,11 @@ export default function App() {
         setThreads((prev) => {
           const latest = prev[threadKey] || currentThread;
           let messages = latest.messages.map((m) => {
-            if (m.id === userMsgId && payload.hasMistake && payload.correctedEnglish) {
+            if (m.id === userMsgId && payload.hasMistake && payload.correctedItalian) {
               return {
                 ...m,
                 correction: {
-                  correctedEnglish: payload.correctedEnglish,
+                  correctedItalian: payload.correctedItalian,
                   explanation: payload.explanation || '',
                 },
               };
@@ -380,7 +384,7 @@ export default function App() {
               ...messages,
               {
                 id: replyMsgId,
-                sender: 'alex',
+                sender: 'marco',
                 text: finalReply,
                 translations:
                   langCode && payload.replyTranslation
@@ -453,9 +457,9 @@ export default function App() {
               let evt: {
                 type: string;
                 delta?: string;
-                replyEnglish?: string;
+                replyItalian?: string;
                 hasMistake?: boolean;
-                correctedEnglish?: string;
+                correctedItalian?: string;
                 explanation?: string;
                 replyTranslation?: string;
                 suggestedNextReply?: string;
@@ -471,11 +475,11 @@ export default function App() {
               if (evt.type === 'reply_delta' && evt.delta) {
                 streamedReply += evt.delta;
                 updateStreamedReplyText(streamedReply);
-              } else if (evt.type === 'reply' && evt.replyEnglish) {
-                streamedReply = evt.replyEnglish;
+              } else if (evt.type === 'reply' && evt.replyItalian) {
+                streamedReply = evt.replyItalian;
                 updateStreamedReplyText(streamedReply);
-              } else if (evt.type === 'reply_complete' && evt.replyEnglish) {
-                streamedReply = evt.replyEnglish;
+              } else if (evt.type === 'reply_complete' && evt.replyItalian) {
+                streamedReply = evt.replyItalian;
                 updateStreamedReplyText(streamedReply);
                 if (autoSpeakRef.current && !autoSpoken) {
                   autoSpoken = true;
@@ -489,9 +493,9 @@ export default function App() {
               } else if (evt.type === 'done') {
                 completed = true;
                 applyCompletedReply({
-                  replyEnglish: evt.replyEnglish || streamedReply,
+                  replyItalian: evt.replyItalian || streamedReply,
                   hasMistake: evt.hasMistake,
-                  correctedEnglish: evt.correctedEnglish,
+                  correctedItalian: evt.correctedItalian,
                   explanation: evt.explanation,
                   replyTranslation: evt.replyTranslation,
                   suggestedNextReply: evt.suggestedNextReply,
@@ -508,7 +512,7 @@ export default function App() {
         }
 
         if (!completed && streamedReply) {
-          applyCompletedReply({ replyEnglish: streamedReply });
+          applyCompletedReply({ replyItalian: streamedReply });
           return true;
         }
         return completed;
@@ -522,15 +526,15 @@ export default function App() {
           signal: AbortSignal.timeout(20000),
         });
         const data = (await res.json()) as {
-          replyEnglish?: string;
+          replyItalian?: string;
           hasMistake?: boolean;
-          correctedEnglish?: string;
+          correctedItalian?: string;
           explanation?: string;
           replyTranslation?: string;
           suggestedNextReply?: string;
           error?: string;
         };
-        if (!res.ok || !data.replyEnglish) {
+        if (!res.ok || !data.replyItalian) {
           const err = new Error(data.error || 'Connection error') as Error & { noRetry?: boolean };
           if (res.status >= 400 && res.status < 500) {
             err.noRetry = true;
@@ -631,8 +635,8 @@ export default function App() {
     }
   }, [activeLevel, activeScenario, currentThread, threadKey]);
 
-  const handleUsePhraseInChat = useCallback((english: string) => {
-    setInputText(english);
+  const handleUsePhraseInChat = useCallback((italian: string) => {
+    setInputText(italian);
     setPhrasesDrawerOpen(false);
     setMobileView('chat');
   }, []);
@@ -688,7 +692,7 @@ export default function App() {
 
   const latestPartnerMessage = useMemo(() => {
     for (let i = currentThread.messages.length - 1; i >= 0; i--) {
-      if (currentThread.messages[i].sender === 'alex') {
+      if (currentThread.messages[i].sender === 'marco') {
         return currentThread.messages[i];
       }
     }
@@ -700,7 +704,7 @@ export default function App() {
   const memorizedCount = currentThread.phrases.filter((p) => p.memorized).length;
 
   return (
-    <div className="h-dvh w-full overflow-hidden flex bg-[#EAE6DF]">
+    <div className="h-dvh w-full overflow-hidden flex bg-[#F1F4F9]">
       {/* Left Sidebar: Topics & 3 Levels (Always visible on md+, toggled on mobile) */}
       <div
         className={`${
@@ -720,7 +724,7 @@ export default function App() {
       <main
         className={`${
           mobileView === 'chat' ? 'flex' : 'hidden'
-        } md:flex flex-1 min-w-0 flex-col h-full whatsapp-wallpaper relative`}
+        } md:flex flex-1 min-w-0 flex-col h-full studio-canvas relative`}
       >
         <ChatHeader
           scenarioId={activeScenario}
@@ -748,15 +752,15 @@ export default function App() {
         />
 
         {/* Mobile Quick Level & Topic Strip */}
-        <div className="md:hidden bg-white/90 backdrop-blur-xs border-b border-black/8 px-3 py-1.5 flex items-center justify-between gap-2 shrink-0">
+        <div className="md:hidden bg-white/95 backdrop-blur-xs border-b border-slate-200/80 px-3 py-1.5 flex items-center justify-between gap-2 shrink-0">
           <button
             type="button"
             onClick={() => setMobileView('list')}
-            className="text-xs font-semibold text-[#008069] truncate cursor-pointer py-1"
+            className="text-xs font-semibold text-[#1E3A8A] truncate cursor-pointer py-1"
           >
             {activeScenarioMeta.title} ▾
           </button>
-          <div className="flex items-center gap-1 bg-[#E9EDEF] p-0.5 rounded-lg shrink-0">
+          <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg shrink-0">
             {LEVELS.map((lvl) => (
               <button
                 key={lvl.id}
@@ -764,8 +768,8 @@ export default function App() {
                 onClick={() => handleSelectLevel(lvl.id)}
                 className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
                   lvl.id === activeLevel
-                    ? 'bg-white text-[#008069] shadow-2xs'
-                    : 'text-[#54656F]'
+                    ? 'bg-white text-[#1E3A8A] shadow-2xs'
+                    : 'text-slate-600'
                 }`}
               >
                 {lvl.label}
@@ -778,15 +782,15 @@ export default function App() {
         <div className="flex-1 overflow-y-auto chat-scroll px-3 sm:px-6 py-4 space-y-3">
           {/* Topic Context Banner */}
           <div className="flex justify-center mb-2">
-            <div className="bg-[#FFEECD]/95 border border-amber-200/70 text-[#54656F] rounded-xl px-3.5 py-2 text-xs text-center max-w-md shadow-2xs leading-relaxed">
-              <span className="font-semibold text-[#111B21]">
+            <div className="bg-white/90 border border-slate-200/80 text-slate-600 rounded-xl px-3.5 py-2 text-xs text-center max-w-md shadow-2xs leading-relaxed">
+              <span className="font-semibold text-slate-900">
                 {activeScenarioMeta.title} · {activeLevelMeta.label}
               </span>
               <span className="mx-1.5" aria-hidden="true">
                 —
               </span>
               <span>
-                Chat naturally in English. If you make a mistake, you&apos;ll get instant corrections and tips.
+                Chat naturally in Italian. If you make a mistake, you&apos;ll get instant corrections and tips.
               </span>
             </div>
           </div>
@@ -794,32 +798,32 @@ export default function App() {
           {/* Clean Empty State with App Logo */}
           {currentThread.messages.length === 0 && !isTyping && (
             <div className="flex justify-center pt-6 pb-2">
-              <div className="bg-white/95 border border-black/8 rounded-2xl p-5 max-w-sm w-full text-center shadow-xs">
-                <div className="flex justify-center mb-3">
+              <div className="bg-white border border-slate-200/80 rounded-2xl p-6 max-w-sm w-full text-center shadow-xs">
+                <div className="flex justify-center mb-3.5">
                   {logoError ? (
-                    <div className="w-20 h-20 rounded-2xl bg-[#008069] text-white font-bold text-lg flex items-center justify-center border border-black/10">
-                      LE
+                    <div className="w-20 h-20 rounded-2xl bg-[#1E3A8A] text-white font-display font-bold text-lg flex items-center justify-center border border-slate-200">
+                      LI
                     </div>
                   ) : (
                     <img
                       src={APP_LOGO_URL}
-                      alt="Learn English via Conversation"
+                      alt="Learn Italian via Conversation"
                       referrerPolicy="no-referrer"
                       onError={() => setLogoError(true)}
-                      className="w-20 h-20 rounded-2xl object-cover border border-black/10 bg-white"
+                      className="w-20 h-20 rounded-2xl object-cover border border-slate-200/80 bg-white shadow-2xs"
                     />
                   )}
                 </div>
-                <h3 className="text-[15px] font-bold text-[#111B21] mb-1">
+                <h3 className="font-display text-[16px] font-bold text-slate-900 mb-1">
                   {activeScenarioMeta.title}
                 </h3>
-                <p className="text-xs text-[#667781] leading-relaxed mb-4">
+                <p className="text-xs text-slate-500 leading-relaxed mb-4">
                   {activeScenarioMeta.roleDescription}
                 </p>
                 <button
                   type="button"
-                  onClick={() => handleSendMessage('Hello! I would like to practice English.')}
-                  className="w-full min-h-[42px] px-4 py-2 rounded-xl bg-[#008069] hover:bg-[#006E5A] text-white text-xs font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  onClick={() => handleSendMessage("Ciao! Vorrei fare pratica con l'italiano.")}
+                  className="w-full min-h-[44px] px-4 py-2 rounded-xl bg-[#1E3A8A] hover:bg-[#1E40AF] text-white text-xs font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer"
                 >
                   <MessageCircle className="w-4 h-4" />
                   <span>Start Conversation</span>
@@ -896,7 +900,7 @@ export default function App() {
       </main>
 
       {/* Right Panel on Desktop (xl+): 5 Key Phrases */}
-      <aside className="hidden xl:flex xl:w-[350px] shrink-0 h-full border-l border-black/10">
+      <aside className="hidden xl:flex xl:w-[350px] shrink-0 h-full border-l border-slate-200/80">
         <div className="w-full h-full">
           <PhrasesPanel
             phrases={currentThread.phrases}
@@ -915,16 +919,16 @@ export default function App() {
       {/* Mobile / Tablet Bottom Sheet Drawer for 5 Key Phrases */}
       {phrasesDrawerOpen && (
         <div
-          className="xl:hidden fixed inset-0 z-50 flex items-end sm:items-center sm:justify-end bg-black/45 backdrop-blur-[2px]"
+          className="xl:hidden fixed inset-0 z-50 flex items-end sm:items-center sm:justify-end bg-slate-900/45 backdrop-blur-[2px]"
           onClick={() => setPhrasesDrawerOpen(false)}
         >
           <div
-            className="w-full sm:w-[400px] h-[84dvh] sm:h-full bg-[#F7F8FA] rounded-t-3xl sm:rounded-none overflow-hidden shadow-2xl flex flex-col"
+            className="w-full sm:w-[400px] h-[84dvh] sm:h-full bg-[#F8FAFC] rounded-t-3xl sm:rounded-none overflow-hidden shadow-2xl flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Mobile Sheet Drag Handle */}
-            <div className="sm:hidden pt-2.5 pb-1 bg-[#F0F2F5] flex justify-center shrink-0">
-              <div className="w-10 h-1 rounded-full bg-black/20" />
+            <div className="sm:hidden pt-2.5 pb-1 bg-white flex justify-center shrink-0">
+              <div className="w-10 h-1 rounded-full bg-slate-300" />
             </div>
             <div className="flex-1 min-h-0">
               <PhrasesPanel
