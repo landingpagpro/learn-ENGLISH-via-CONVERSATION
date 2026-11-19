@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: learn-italian-via-conversation
+    name: impara-l-italiano
     runtime: node
     plan: free
     buildCommand: npm install --include=dev && npm run build

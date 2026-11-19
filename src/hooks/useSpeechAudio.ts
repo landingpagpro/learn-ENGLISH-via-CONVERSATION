@@ -97,7 +97,7 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
 
   const fallbackSpeak = useCallback((id: string, text: string, slow: boolean) => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      setAudioError('Speech playback is not supported in this browser.');
+      setAudioError('La riproduzione vocale non è supportata su questo browser.');
       return;
     }
     if (speechTimerRef.current) {
@@ -115,7 +115,7 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
         setPlayingId((curr) => (curr === id ? null : curr));
         const errCode = (event as SpeechSynthesisErrorEvent | undefined)?.error;
         if (errCode !== 'interrupted' && errCode !== 'canceled' && errCode !== 'not-allowed') {
-          setAudioError('Could not play audio right now.');
+          setAudioError("Impossibile riprodurre l'audio al momento.");
         }
       };
       try {

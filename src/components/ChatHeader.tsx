@@ -45,7 +45,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         <button
           type="button"
           onClick={onBackToScenarios}
-          aria-label="Back to topics"
+          aria-label="Torna agli argomenti"
           className="md:hidden min-w-[40px] min-h-[40px] flex items-center justify-center rounded-lg text-[#475569] hover:bg-black/5 active:bg-black/10 transition-colors cursor-pointer shrink-0"
         >
           <ArrowLeft className="w-5 h-5" />
@@ -54,12 +54,12 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         <div className="relative shrink-0 hidden sm:block">
           {imgError ? (
             <div className="w-10 h-10 rounded-lg bg-[#1E40AF] text-white font-bold text-xs flex items-center justify-center border border-[#1E40AF]/20">
-              LI
+              II
             </div>
           ) : (
             <img
               src={APP_LOGO_URL}
-              alt="Learn Italian via Conversation"
+              alt="Impara l'Italiano"
               referrerPolicy="no-referrer"
               onError={() => setImgError(true)}
               className="w-10 h-10 rounded-lg object-cover border border-slate-200 bg-white"
@@ -70,28 +70,28 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <h2 className="text-[14.5px] sm:text-[15px] font-semibold text-[#0F172A] truncate">
-              {scenario.id === 'conversation' ? 'Learn Italian via Conversation' : scenario.title}
+              {scenario.id === 'conversation' ? "Impara l'Italiano" : scenario.title}
             </h2>
           </div>
           <p className="text-[11px] text-[#475569] truncate">
             {isTyping ? (
-              <span className="text-[#1E40AF] font-medium">Replying</span>
+              <span className="text-[#1E40AF] font-medium">Sta rispondendo</span>
             ) : (
               <span>
-                {levelMeta.label} · Italian Practice
+                {levelMeta.label} · Pratica di italiano
               </span>
             )}
           </p>
         </div>
       </div>
 
-      {/* Right Group: Lite mode + Auto-speak + 5 Phrases Drawer + Reset */}
+      {/* Right Group: Lite mode + Auto-speak + 5 Frasi Drawer + Reset */}
       <div className="flex items-center gap-1 shrink-0">
         <button
           type="button"
           onClick={onToggleLiteMode}
-          title={liteMode ? 'Lite mode enabled (local speech, low data)' : 'Enable Lite mode for slow connections'}
-          aria-label="Toggle Lite mode"
+          title={liteMode ? 'Modalità Lite attiva (voce locale, pochi dati)' : 'Attiva modalità Lite per connessioni lente'}
+          aria-label="Attiva o disattiva modalità Lite"
           className={`min-h-[38px] sm:min-h-[40px] px-2 sm:px-2.5 rounded-lg border transition-colors flex items-center gap-1 text-xs font-semibold whitespace-nowrap cursor-pointer ${
             liteMode
               ? 'bg-amber-50 border-amber-300 text-amber-800'
@@ -105,8 +105,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         <button
           type="button"
           onClick={onToggleAutoSpeak}
-          title={autoSpeak ? 'Auto-speak enabled' : 'Auto-speak muted'}
-          aria-label={autoSpeak ? 'Mute auto-speak' : 'Enable auto-speak'}
+          title={autoSpeak ? 'Lettura automatica attiva' : 'Lettura automatica disattivata'}
+          aria-label={autoSpeak ? 'Disattiva lettura automatica' : 'Attiva lettura automatica'}
           className={`min-h-[38px] sm:min-h-[40px] px-2 sm:px-2.5 rounded-lg border transition-colors flex items-center gap-1.5 text-xs font-semibold whitespace-nowrap cursor-pointer ${
             autoSpeak
               ? 'bg-[#EFF6FF] border-[#1E40AF]/25 text-[#1E40AF]'
@@ -118,7 +118,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           ) : (
             <VolumeX className="w-4 h-4 shrink-0" />
           )}
-          <span className="hidden sm:inline">{autoSpeak ? 'Auto' : 'Muted'}</span>
+          <span className="hidden sm:inline">{autoSpeak ? 'Auto' : 'Muto'}</span>
         </button>
 
         <button
@@ -127,7 +127,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           className="xl:hidden min-h-[38px] sm:min-h-[40px] px-2 sm:px-3 rounded-lg bg-white border border-slate-200 text-[#1E40AF] hover:bg-[#F8FAFC] active:scale-[0.98] transition-all flex items-center gap-1 text-xs font-semibold whitespace-nowrap cursor-pointer"
         >
           <BookOpen className="w-4 h-4 shrink-0" />
-          <span className="hidden sm:inline">5 Phrases</span>
+          <span className="hidden sm:inline">5 Frasi</span>
           <span className="text-[#64748B] tabular-nums">
             {memorizedCount}/{totalPhrases}
           </span>
@@ -143,22 +143,22 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               }}
               className="px-2.5 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 rounded-md whitespace-nowrap cursor-pointer"
             >
-              Clear
+              Cancella
             </button>
             <button
               type="button"
               onClick={() => setConfirmReset(false)}
               className="px-2.5 py-1.5 text-xs font-medium text-[#475569] hover:bg-black/5 rounded-md whitespace-nowrap cursor-pointer"
             >
-              Cancel
+              Annulla
             </button>
           </div>
         ) : (
           <button
             type="button"
             onClick={() => setConfirmReset(true)}
-            title="New conversation"
-            aria-label="New conversation"
+            title="Nuova conversazione"
+            aria-label="Nuova conversazione"
             className="min-w-[38px] sm:min-w-[44px] min-h-[38px] sm:min-h-[44px] flex items-center justify-center rounded-lg text-[#475569] hover:bg-black/5 active:bg-black/10 transition-colors cursor-pointer"
           >
             <RotateCcw className="w-[18px] h-[18px]" />

@@ -42,7 +42,7 @@ function formatServerError(err: unknown, fallbackMsg: string): { status: number;
   if (raw.includes('MISSING_GEMINI_API_KEY')) {
     return {
       status: 503,
-      message: 'GEMINI_API_KEY is missing in Render Environment Variables.',
+      message: 'GEMINI_API_KEY mancante nelle variabili di ambiente.',
     };
   }
   if (
@@ -54,25 +54,25 @@ function formatServerError(err: unknown, fallbackMsg: string): { status: number;
   ) {
     return {
       status: 401,
-      message: 'Invalid GEMINI_API_KEY in server Environment Variables.',
+      message: 'GEMINI_API_KEY non valida nelle variabili di ambiente.',
     };
   }
   if (raw.includes('429') || raw.includes('RESOURCE_EXHAUSTED')) {
     return {
       status: 429,
-      message: 'Rate limit reached. Please wait a few seconds and tap Retry.',
+      message: 'Limite raggiunto. Attendi qualche secondo e tocca Riprova.',
     };
   }
   if (raw.includes('NOT_FOUND') || raw.includes('404')) {
     return {
       status: 502,
-      message: 'AI model not available for this API key. Check your Gemini API key access.',
+      message: 'Modello AI non disponibile per questa chiave API.',
     };
   }
   if (raw.includes('timeout') || raw.includes('Timeout') || raw.includes('503') || raw.includes('UNAVAILABLE')) {
     return {
       status: 503,
-      message: 'Server is waking up or timed out. Please tap Retry.',
+      message: 'Il server è occupato o in riavvio. Tocca Riprova.',
     };
   }
   return {
@@ -181,8 +181,9 @@ app.use(express.json({ limit: '15mb' }));
     res.setHeader('Content-Encoding', 'identity');
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
-    // Flush a 1KB SSE comment immediately so reverse proxies (Render/Nginx/Cloudflare) stream tokens without buffering
+    // Flush immediate SSE comment + start event so proxies stream tokens without buffering
     res.write(`: connected ${' '.repeat(1024)}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'start' })}\n\n`);
 
     let clientClosed = false;
     res.on('close', () => {
@@ -201,7 +202,7 @@ app.use(express.json({ limit: '15mb' }));
       };
 
       if (!userMessage || typeof userMessage !== 'string' || !userMessage.trim()) {
-        res.write(`data: ${JSON.stringify({ type: 'error', status: 400, error: 'Message text is required.' })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'error', status: 400, error: 'Inserisci un messaggio.' })}\n\n`);
         return res.end();
       }
 
@@ -209,28 +210,27 @@ app.use(express.json({ limit: '15mb' }));
       const { scenarioInfo, levelInfo, prompt } = buildChatPrompts(scenarioId, level, history, userMessage);
       const transLang = targetLanguageName?.trim();
       const transMarkerInstruction = transLang
-        ? `[TRANS]\nAccurate natural translation of [REPLY] into ${transLang}\n`
+        ? `[TRANS]\nTraduzione naturale di [REPLY] in ${transLang}\n`
         : '';
 
-      const systemInstruction = `You are Marco, a friendly native Italian conversation partner in "Learn Italian via Conversation".
-Context: ${scenarioInfo}
-Level: ${levelInfo}
-Rules:
-- Reply directly in natural Italian to what the learner actually asked or said. Follow their topic even if it changes (sports, food, culture, travel, daily life).
-- If they write broken Italian or mix another language, understand their intent, answer directly in Italian, and teach the natural Italian phrasing in [CORRECTED] + [EXPLAIN].
-- Keep [REPLY] concise (1-2 short natural Italian sentences + 1 short follow-up question in Italian).
+      const systemInstruction = `Sei Marco, partner italiano amichevole in "Impara l'Italiano".
+Contesto: ${scenarioInfo}
+Livello: ${levelInfo}
+Regole:
+- Rispondi subito in italiano naturale a ciò che dice l'utente (1-2 frasi brevi + 1 domanda breve).
+- Se ci sono errori grammaticali o parole straniere, correggili in [CORRECTED] e spiega in italiano semplice in [EXPLAIN].
 
-Use ONLY these exact markers in order, starting immediately with [REPLY]:
+Usa SOLO questi marker esatti in ordine iniziando da [REPLY]:
 [REPLY]
-Your direct Italian reply
+Risposta diretta in italiano
 [MISTAKE]
-YES or NO (ignore minor punctuation/capitalization/missing accents if unambiguous; if NO, omit [CORRECTED] and [EXPLAIN])
+YES o NO (se NO ometti [CORRECTED] e [EXPLAIN])
 [CORRECTED]
-Natural Italian version of learner's message (only if YES)
+Frase corretta in italiano naturale (solo se YES)
 [EXPLAIN]
-1 short simple-English grammar tip explaining why in Italian (only if YES)
+1 breve consiglio in italiano semplice (solo se YES)
 ${transMarkerInstruction}[HINT]
-1 short Italian reply the learner can say next`;
+1 breve risposta suggerita in italiano`;
 
       const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
         let timer: NodeJS.Timeout;
@@ -278,6 +278,7 @@ ${transMarkerInstruction}[HINT]
                   contents: prompt,
                   config: {
                     systemInstruction,
+                    maxOutputTokens: 320,
                     thinkingConfig: { thinkingLevel },
                   },
                 })
@@ -299,11 +300,11 @@ ${transMarkerInstruction}[HINT]
                   if (!hedgeStarted) {
                     hedgeStarted = true;
                     if (hedgeTimer) clearTimeout(hedgeTimer);
-                    launch('gemini-4-hydrogen', ThinkingLevel.LOW);
+                    launch('gemini-4-hydrogen', ThinkingLevel.MINIMAL);
                   } else if (failures >= 2) {
                     settled = true;
                     if (hedgeTimer) clearTimeout(hedgeTimer);
-                    reject(lastErr || new Error('Service temporarily busy.'));
+                    reject(lastErr || new Error('Servizio temporaneamente occupato.'));
                   }
                 });
             };
@@ -312,11 +313,11 @@ ${transMarkerInstruction}[HINT]
             hedgeTimer = setTimeout(() => {
               if (!settled && !hedgeStarted && !clientClosed) {
                 hedgeStarted = true;
-                launch('gemini-4-hydrogen', ThinkingLevel.LOW);
+                launch('gemini-4-hydrogen', ThinkingLevel.MINIMAL);
               }
-            }, 900);
+            }, 250);
           }),
-          8500,
+          8000,
           'chat stream first chunk'
         );
 
@@ -407,18 +408,18 @@ ${transMarkerInstruction}[HINT]
       };
 
       if (!userMessage || typeof userMessage !== 'string' || !userMessage.trim()) {
-        return res.status(400).json({ error: 'Message text is required.' });
+        return res.status(400).json({ error: 'Inserisci un messaggio.' });
       }
 
       const ai = getAiClient();
       const { scenarioInfo, levelInfo, prompt } = buildChatPrompts(scenarioId, level, history, userMessage);
       const transLang = targetLanguageName?.trim();
 
-      const systemInstruction = `You are Marco, a friendly native Italian conversation partner.
-Context: ${scenarioInfo}
-Level: ${levelInfo}
-Reply directly in natural Italian to what the learner actually asked/said (follow their topic even if it changes). Keep replyItalian concise (1-2 short Italian sentences + 1 short Italian question). Set hasMistake=true only for real Italian mistakes or non-Italian words, and give correctedItalian + 1 short encouraging explanation in simple English. Always give suggestedNextReply in natural Italian.${
-        transLang ? ` Also provide replyTranslation of replyItalian in ${transLang}.` : ''
+      const systemInstruction = `Sei Marco, partner italiano amichevole in "Impara l'Italiano".
+Contesto: ${scenarioInfo}
+Livello: ${levelInfo}
+Rispondi subito in italiano naturale (1-2 frasi brevi + 1 domanda breve in replyItalian). Imposta hasMistake=true solo per errori reali o parole straniere e fornisci correctedItalian + 1 breve spiegazione in italiano semplice (explanation). Fornisci sempre suggestedNextReply in italiano.${
+        transLang ? ` Fornisci anche replyTranslation di replyItalian in ${transLang}.` : ''
       }`;
 
       const schemaProperties: Record<string, { type: Type }> = {
@@ -465,6 +466,7 @@ Reply directly in natural Italian to what the learner actually asked/said (follo
                 contents: prompt,
                 config: {
                   systemInstruction,
+                  maxOutputTokens: 320,
                   thinkingConfig: { thinkingLevel },
                   responseMimeType: 'application/json',
                   responseSchema: {
@@ -487,11 +489,11 @@ Reply directly in natural Italian to what the learner actually asked/said (follo
                 if (!hedgeStarted) {
                   hedgeStarted = true;
                   if (hedgeTimer) clearTimeout(hedgeTimer);
-                  launch('gemini-4-hydrogen', ThinkingLevel.LOW);
+                  launch('gemini-4-hydrogen', ThinkingLevel.MINIMAL);
                 } else if (failures >= 2) {
                   settled = true;
                   if (hedgeTimer) clearTimeout(hedgeTimer);
-                  reject(lastErr || new Error('Chat failed'));
+                  reject(lastErr || new Error('Errore chat'));
                 }
               });
           };
@@ -500,11 +502,11 @@ Reply directly in natural Italian to what the learner actually asked/said (follo
           hedgeTimer = setTimeout(() => {
             if (!settled && !hedgeStarted) {
               hedgeStarted = true;
-              launch('gemini-4-hydrogen', ThinkingLevel.LOW);
+              launch('gemini-4-hydrogen', ThinkingLevel.MINIMAL);
             }
-          }, 1000);
+          }, 250);
         }),
-        8500
+        8000
       );
 
       const parsed = JSON.parse((response.text ?? '{}').trim());
@@ -513,7 +515,7 @@ Reply directly in natural Italian to what the learner actually asked/said (follo
       console.error('Chat error:', err);
       const { status, message } = formatServerError(
         err,
-        'The server is temporarily busy. Please try again.'
+        'Il server è temporaneamente occupato. Riprova.'
       );
       return res.status(status).json({ error: message });
     }
@@ -539,10 +541,10 @@ Reply directly in natural Italian to what the learner actually asked/said (follo
 
       const response = await ai.models.generateContent({
         model: 'gemini-3.1-flash-lite',
-        contents: `Generate 5 practical spoken Italian phrases to practice.\nScenario: ${scenarioInfo}\nLevel: ${levelInfo}\nRecent chat:\n${contextLines || 'Opening'}`,
+        contents: `Genera 5 frasi pratiche di italiano parlato da usare nella conversazione.\nScenario: ${scenarioInfo}\nLivello: ${levelInfo}\nChat recente:\n${contextLines || 'Inizio'}`,
         config: {
           systemInstruction:
-            'You are a native Italian coach. Return exactly 5 useful spoken Italian phrases matching the scenario and level, each with a concise simple-English meaning and a brief 1-sentence usage tip.',
+            'Sei un tutor madrelingua italiano. Restituisci esattamente 5 frasi utili in italiano adatte al contesto e al livello, ognuna con una breve spiegazione/sinonimo in italiano semplice (meaning) e un breve consiglio d’uso di 1 frase in italiano semplice (usageNote).',
           thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
           responseMimeType: 'application/json',
           responseSchema: {
@@ -579,7 +581,7 @@ Reply directly in natural Italian to what the learner actually asked/said (follo
       console.error('Phrases error:', err);
       const { status, message } = formatServerError(
         err,
-        'Could not generate new phrases right now. Please try again.'
+        'Impossibile generare nuove frasi al momento. Riprova.'
       );
       return res.status(status).json({ error: message });
     }

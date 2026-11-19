@@ -19,7 +19,7 @@ const MAX_MESSAGES_PER_THREAD = 30;
 
 function formatTimeNow(): string {
   const now = new Date();
-  return now.toLocaleTimeString('en-US', {
+  return now.toLocaleTimeString('it-IT', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -33,6 +33,15 @@ function createEmptyThread(scenarioId: ScenarioId, level: ProficiencyLevel): Con
     phrases: initialPhrases,
     lastUpdated: Date.now(),
   };
+}
+
+interface ChatPayload {
+  replyItalian?: string;
+  hasMistake?: boolean;
+  correctedItalian?: string;
+  explanation?: string;
+  replyTranslation?: string;
+  suggestedNextReply?: string;
 }
 
 export default function App() {
@@ -277,7 +286,7 @@ export default function App() {
 
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         setFailedMessage(text);
-        setChatError('You appear to be offline. Reconnect to the internet and tap Retry.');
+        setChatError('Sembri offline. Riconnettiti a internet e tocca Riprova.');
         return;
       }
 
@@ -313,9 +322,15 @@ export default function App() {
       setIsTyping(true);
       const replyMsgId = `reply-${Date.now()}`;
       let autoSpoken = false;
+      let winnerLocked = false;
+      let firstTokenReceived = false;
+
+      const streamController = new AbortController();
+      const fallbackController = new AbortController();
 
       const updateStreamedReplyText = (partialReply: string) => {
         if (!partialReply) return;
+        firstTokenReceived = true;
         setThreads((prev) => {
           const latest = prev[threadKey] || currentThread;
           const exists = latest.messages.some((m) => m.id === replyMsgId);
@@ -342,14 +357,9 @@ export default function App() {
         });
       };
 
-      const applyCompletedReply = (payload: {
-        replyItalian?: string;
-        hasMistake?: boolean;
-        correctedItalian?: string;
-        explanation?: string;
-        replyTranslation?: string;
-        suggestedNextReply?: string;
-      }) => {
+      const applyCompletedReply = (payload: ChatPayload) => {
+        if (winnerLocked) return;
+        winnerLocked = true;
         setIsTyping(false);
         const finalReply = payload.replyItalian || '';
         if (finalReply && autoSpeakRef.current && !autoSpoken) {
@@ -429,152 +439,173 @@ export default function App() {
       });
 
       const hardStopTimer = window.setTimeout(() => {
+        streamController.abort();
+        fallbackController.abort();
         setIsTyping(false);
-      }, 16000);
+      }, 11500);
 
-      const sendStreamRequest = async (): Promise<boolean> => {
-        const res = await fetch('/api/chat/stream', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: requestBody,
-          signal: AbortSignal.timeout(10000),
-        });
+      const sendStreamRequest = async (): Promise<void> => {
+        const timer = window.setTimeout(() => streamController.abort(), 9500);
+        try {
+          const res = await fetch('/api/chat/stream', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: requestBody,
+            signal: streamController.signal,
+          });
 
-        if (!res.ok || !res.body) {
-          throw new Error('Stream unavailable');
-        }
+          if (!res.ok || !res.body) {
+            throw new Error('Stream non disponibile');
+          }
 
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let streamedReply = '';
-        let completed = false;
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let streamedReply = '';
+          let completed = false;
 
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done || winnerLocked) break;
+            buffer += decoder.decode(value, { stream: true });
 
-          const events = buffer.split('\n\n');
-          buffer = events.pop() || '';
+            const events = buffer.split('\n\n');
+            buffer = events.pop() || '';
 
-          for (const rawEvent of events) {
-            const lines = rawEvent.split('\n');
-            for (const line of lines) {
-              if (!line.startsWith('data: ')) continue;
-              const jsonStr = line.slice(6).trim();
-              if (!jsonStr) continue;
-              let evt: {
-                type: string;
-                delta?: string;
-                replyItalian?: string;
-                hasMistake?: boolean;
-                correctedItalian?: string;
-                explanation?: string;
-                replyTranslation?: string;
-                suggestedNextReply?: string;
-                status?: number;
-                error?: string;
-              };
-              try {
-                evt = JSON.parse(jsonStr);
-              } catch {
-                continue;
-              }
+            for (const rawEvent of events) {
+              const lines = rawEvent.split('\n');
+              for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const jsonStr = line.slice(6).trim();
+                if (!jsonStr) continue;
+                let evt: ChatPayload & {
+                  type: string;
+                  delta?: string;
+                  status?: number;
+                  error?: string;
+                };
+                try {
+                  evt = JSON.parse(jsonStr);
+                } catch {
+                  continue;
+                }
 
-              if (evt.type === 'reply_delta' && evt.delta) {
-                streamedReply += evt.delta;
-                updateStreamedReplyText(streamedReply);
-              } else if (evt.type === 'reply' && evt.replyItalian) {
-                streamedReply = evt.replyItalian;
-                updateStreamedReplyText(streamedReply);
-              } else if (evt.type === 'reply_complete' && evt.replyItalian) {
-                streamedReply = evt.replyItalian;
-                updateStreamedReplyText(streamedReply);
-                if (autoSpeakRef.current && !autoSpoken) {
-                  autoSpoken = true;
-                  play({
-                    id: `msg-${replyMsgId}`,
-                    text: streamedReply,
-                    level: activeLevel,
-                    slow: false,
+                if (winnerLocked) break;
+
+                if (evt.type === 'reply_delta' && evt.delta) {
+                  streamedReply += evt.delta;
+                  updateStreamedReplyText(streamedReply);
+                } else if (evt.type === 'reply' && evt.replyItalian) {
+                  streamedReply = evt.replyItalian;
+                  updateStreamedReplyText(streamedReply);
+                } else if (evt.type === 'reply_complete' && evt.replyItalian) {
+                  streamedReply = evt.replyItalian;
+                  updateStreamedReplyText(streamedReply);
+                  if (autoSpeakRef.current && !autoSpoken) {
+                    autoSpoken = true;
+                    play({
+                      id: `msg-${replyMsgId}`,
+                      text: streamedReply,
+                      level: activeLevel,
+                      slow: false,
+                    });
+                  }
+                } else if (evt.type === 'done') {
+                  completed = true;
+                  fallbackController.abort();
+                  applyCompletedReply({
+                    replyItalian: evt.replyItalian || streamedReply,
+                    hasMistake: evt.hasMistake,
+                    correctedItalian: evt.correctedItalian,
+                    explanation: evt.explanation,
+                    replyTranslation: evt.replyTranslation,
+                    suggestedNextReply: evt.suggestedNextReply,
                   });
+                } else if (evt.type === 'error') {
+                  const err = new Error(evt.error || 'Errore di connessione') as Error & { noRetry?: boolean };
+                  if (evt.status && evt.status >= 400 && evt.status !== 500) {
+                    err.noRetry = true;
+                  }
+                  throw err;
                 }
-              } else if (evt.type === 'done') {
-                completed = true;
-                applyCompletedReply({
-                  replyItalian: evt.replyItalian || streamedReply,
-                  hasMistake: evt.hasMistake,
-                  correctedItalian: evt.correctedItalian,
-                  explanation: evt.explanation,
-                  replyTranslation: evt.replyTranslation,
-                  suggestedNextReply: evt.suggestedNextReply,
-                });
-              } else if (evt.type === 'error') {
-                const err = new Error(evt.error || 'Connection error') as Error & { noRetry?: boolean };
-                if (evt.status && evt.status >= 400 && evt.status !== 500) {
-                  err.noRetry = true;
-                }
-                throw err;
               }
             }
           }
-        }
 
-        if (!completed && streamedReply) {
-          applyCompletedReply({ replyItalian: streamedReply });
-          return true;
-        }
-        return completed;
-      };
-
-      const sendChatRequest = async () => {
-        const res = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: requestBody,
-          signal: AbortSignal.timeout(9500),
-        });
-        const data = (await res.json()) as {
-          replyItalian?: string;
-          hasMistake?: boolean;
-          correctedItalian?: string;
-          explanation?: string;
-          replyTranslation?: string;
-          suggestedNextReply?: string;
-          error?: string;
-        };
-        if (!res.ok || !data.replyItalian) {
-          const err = new Error(data.error || 'Connection error') as Error & { noRetry?: boolean };
-          if (res.status >= 400 && res.status !== 500) {
-            err.noRetry = true;
+          if (!completed && !winnerLocked && streamedReply) {
+            fallbackController.abort();
+            applyCompletedReply({ replyItalian: streamedReply });
+          } else if (!completed && !winnerLocked) {
+            throw new Error('Risposta incompleta');
           }
-          throw err;
+        } finally {
+          window.clearTimeout(timer);
         }
-        return data;
       };
+
+      const sendChatRequest = async (): Promise<void> => {
+        const timer = window.setTimeout(() => fallbackController.abort(), 9000);
+        try {
+          const res = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: requestBody,
+            signal: fallbackController.signal,
+          });
+          const data = (await res.json()) as ChatPayload & { error?: string };
+          if (!res.ok || !data.replyItalian) {
+            const err = new Error(data.error || 'Errore di connessione') as Error & { noRetry?: boolean };
+            if (res.status >= 400 && res.status !== 500) {
+              err.noRetry = true;
+            }
+            throw err;
+          }
+          if (!winnerLocked) {
+            streamController.abort();
+            applyCompletedReply(data);
+          }
+        } finally {
+          window.clearTimeout(timer);
+        }
+      };
+
+      // Launch SSE stream immediately, and if no token arrives within 2s (e.g. proxy buffering),
+      // race /api/chat in parallel so there is no dead pause before responding.
+      let fallbackPromise: Promise<void> | null = null;
+      const startFallbackOnce = () => {
+        if (!fallbackPromise && !winnerLocked) {
+          fallbackPromise = sendChatRequest();
+        }
+        return fallbackPromise;
+      };
+
+      const parallelRaceTimer = window.setTimeout(() => {
+        if (!firstTokenReceived && !winnerLocked) {
+          startFallbackOnce()?.catch(() => {});
+        }
+      }, 2000);
 
       try {
-        let handled = false;
         try {
-          handled = await sendStreamRequest();
+          await sendStreamRequest();
         } catch (streamErr: unknown) {
+          if (winnerLocked) return;
           if (typeof navigator !== 'undefined' && !navigator.onLine) {
-            throw new Error('You appear to be offline.');
+            throw new Error('Sembri offline.');
           }
           if (streamErr instanceof Error && (streamErr as Error & { noRetry?: boolean }).noRetry) {
             throw streamErr;
           }
-        }
-        if (!handled) {
-          const chatData = await sendChatRequest();
-          applyCompletedReply(chatData);
+          await startFallbackOnce();
         }
       } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'Please check your internet connection.';
-        setFailedMessage(text);
-        setChatError(msg);
+        if (!winnerLocked) {
+          const msg = err instanceof Error ? err.message : 'Controlla la tua connessione internet.';
+          setFailedMessage(text);
+          setChatError(msg);
+        }
       } finally {
+        window.clearTimeout(parallelRaceTimer);
         window.clearTimeout(hardStopTimer);
         setIsTyping(false);
       }
@@ -624,7 +655,7 @@ export default function App() {
       };
 
       if (!response.ok || !data.phrases?.length) {
-        throw new Error(data.error || 'Could not generate new phrases.');
+        throw new Error(data.error || 'Impossibile generare nuove frasi.');
       }
 
       setThreads((prev) => {
@@ -638,7 +669,7 @@ export default function App() {
         };
       });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to refresh phrases.';
+      const msg = err instanceof Error ? err.message : 'Impossibile aggiornare le frasi.';
       setChatError(msg);
     } finally {
       setIsGeneratingPhrases(false);
@@ -668,7 +699,7 @@ export default function App() {
         });
         const data = (await response.json()) as { translation?: string; error?: string };
         if (!response.ok || !data.translation) {
-          throw new Error(data.error || 'Translation failed');
+          throw new Error(data.error || 'Traduzione non riuscita');
         }
         setThreads((prev) => {
           const thread = prev[threadKey] || currentThread;
@@ -688,7 +719,7 @@ export default function App() {
           };
         });
       } catch {
-        setChatError('Translation failed. Please try again.');
+        setChatError('Traduzione non riuscita. Riprova.');
       } finally {
         setTranslatingIds((prev) => {
           const next = { ...prev };
@@ -712,6 +743,9 @@ export default function App() {
   const activeScenarioMeta = SCENARIOS.find((s) => s.id === activeScenario) || SCENARIOS[0];
   const activeLevelMeta = LEVELS.find((l) => l.id === activeLevel) || LEVELS[0];
   const memorizedCount = currentThread.phrases.filter((p) => p.memorized).length;
+
+  const lastMessage = currentThread.messages[currentThread.messages.length - 1];
+  const showMarcoTypingBubble = isTyping && (!lastMessage || lastMessage.sender === 'user');
 
   return (
     <div className="h-dvh w-full overflow-hidden flex bg-[#EEF2F6]">
@@ -800,7 +834,7 @@ export default function App() {
                 —
               </span>
               <span>
-                Chat naturally in Italian with Marco. If you make a mistake, you&apos;ll get instant corrections and tips.
+                Parla naturalmente in italiano con Marco. Se fai un errore, riceverai subito correzioni e consigli.
               </span>
             </div>
           </div>
@@ -812,12 +846,12 @@ export default function App() {
                 <div className="flex justify-center mb-3">
                   {logoError ? (
                     <div className="w-20 h-20 rounded-xl bg-[#1E40AF] text-white font-bold text-lg flex items-center justify-center border border-[#1E40AF]/20">
-                      LI
+                      II
                     </div>
                   ) : (
                     <img
                       src={APP_LOGO_URL}
-                      alt="Learn Italian via Conversation"
+                      alt="Impara l'Italiano"
                       referrerPolicy="no-referrer"
                       onError={() => setLogoError(true)}
                       className="w-20 h-20 rounded-xl object-cover border border-slate-200 bg-white"
@@ -836,7 +870,7 @@ export default function App() {
                   className="w-full min-h-[42px] px-4 py-2 rounded-lg bg-[#1E40AF] hover:bg-[#1E3A8A] text-white text-xs font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer"
                 >
                   <MessageCircle className="w-4 h-4" />
-                  <span>Start Conversation</span>
+                  <span>Inizia conversazione</span>
                 </button>
               </div>
             </div>
@@ -861,13 +895,24 @@ export default function App() {
             />
           ))}
 
+          {/* Instant Marco typing indicator bubble (zero spinners, zero waiting ellipses) */}
+          {showMarcoTypingBubble && (
+            <div dir="ltr" className="flex w-full justify-start">
+              <div className="bg-white border border-slate-200 rounded-xl rounded-tl-[4px] px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.05)] flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-[#1E40AF]/70 animate-pulse" />
+                <span className="w-2 h-2 rounded-full bg-[#1E40AF]/50 animate-pulse [animation-delay:150ms]" />
+                <span className="w-2 h-2 rounded-full bg-[#1E40AF]/35 animate-pulse [animation-delay:300ms]" />
+              </div>
+            </div>
+          )}
+
           {/* Offline / API / Audio Error Notice with Retry */}
           {(!isOnline || chatError || audioError) && (
             <div className="flex justify-center">
               <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl px-4 py-2 text-xs max-w-md text-center flex items-center justify-center gap-2.5 flex-wrap">
                 <span>
                   {!isOnline
-                    ? 'You appear to be offline. Waiting for connection'
+                    ? 'Sembri offline. In attesa di connessione'
                     : chatError || audioError}
                 </span>
                 {failedMessage && isOnline && (
@@ -876,7 +921,7 @@ export default function App() {
                     onClick={() => handleSendMessage(failedMessage)}
                     className="px-2.5 py-1 rounded-lg bg-rose-700 text-white font-semibold hover:bg-rose-800 transition-colors cursor-pointer"
                   >
-                    Retry
+                    Riprova
                   </button>
                 )}
                 {isOnline && (
@@ -887,7 +932,7 @@ export default function App() {
                       setFailedMessage(null);
                     }}
                     className="text-rose-600 hover:text-rose-900 font-bold px-1 cursor-pointer"
-                    aria-label="Dismiss error"
+                    aria-label="Chiudi errore"
                   >
                     ×
                   </button>
