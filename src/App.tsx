@@ -445,10 +445,10 @@ export default function App() {
         streamController.abort();
         fallbackController.abort();
         setIsTyping(false);
-      }, 26000);
+      }, 28000);
 
       const sendStreamRequest = async (): Promise<void> => {
-        const timer = window.setTimeout(() => streamController.abort(), 12000);
+        const timer = window.setTimeout(() => streamController.abort(), 14000);
         try {
           const res = await fetch('/api/chat/stream', {
             method: 'POST',
@@ -551,7 +551,7 @@ export default function App() {
 
       const sendChatRequest = async (attempt = 0): Promise<void> => {
         const controller = attempt === 0 ? fallbackController : new AbortController();
-        const timer = window.setTimeout(() => controller.abort(), 12000);
+        const timer = window.setTimeout(() => controller.abort(), 14000);
         try {
           const res = await fetch('/api/chat', {
             method: 'POST',
@@ -581,13 +581,16 @@ export default function App() {
           }
         } catch (err: unknown) {
           if (
-            attempt === 0 &&
+            attempt < 2 &&
             !winnerLocked &&
             !hardStopped &&
             !(err instanceof Error && (err as Error & { noRetry?: boolean }).noRetry) &&
             (typeof navigator === 'undefined' || navigator.onLine)
           ) {
-            return sendChatRequest(1);
+            await new Promise((resolve) => window.setTimeout(resolve, 450 * (attempt + 1)));
+            if (!winnerLocked && !hardStopped) {
+              return sendChatRequest(attempt + 1);
+            }
           }
           throw err;
         } finally {

@@ -293,7 +293,8 @@ ${transMarkerInstruction}[HINT]
           const hedgeTimers: NodeJS.Timeout[] = [];
           const clearHedges = () => hedgeTimers.forEach((t) => clearTimeout(t));
 
-          // Primary fast model at t=0ms; hedge to gemini-4-hydrogen only on error or after 2500ms
+          const startedAt = Date.now();
+          let retriedOnTransient = false;
           let hedgeStarted = false;
           const startHedge = () => {
             if (hedgeStarted || settled || clientClosed) return;
@@ -343,8 +344,22 @@ ${transMarkerInstruction}[HINT]
               .catch((err: unknown) => {
                 activePending -= 1;
                 lastErr = err;
-                if (settled) return;
+                if (settled || clientClosed) return;
                 startHedge();
+                const msg = err instanceof Error ? err.message : String(err);
+                const isTransient =
+                  msg.includes('503') ||
+                  msg.includes('UNAVAILABLE') ||
+                  msg.includes('DEADLINE_EXCEEDED') ||
+                  msg.includes('429') ||
+                  msg.includes('RESOURCE_EXHAUSTED');
+                if (isTransient && !retriedOnTransient && Date.now() - startedAt < 7000) {
+                  retriedOnTransient = true;
+                  setTimeout(() => {
+                    if (!settled && !clientClosed) launch('gemini-3.1-flash-lite', ThinkingLevel.MINIMAL);
+                  }, 450);
+                  return;
+                }
                 if (activePending <= 0) {
                   settled = true;
                   clearHedges();
@@ -356,7 +371,7 @@ ${transMarkerInstruction}[HINT]
           launch('gemini-3.1-flash-lite', ThinkingLevel.MINIMAL);
           hedgeTimers.push(setTimeout(startHedge, 2500));
         }),
-        11000,
+        12000,
         'chat stream first chunk'
       );
 
@@ -510,7 +525,7 @@ Reply immediately in natural English (1 short sentence + 1 short question, max 2
       new Promise<Awaited<ReturnType<typeof ai.models.generateContent>>>((resolve, reject) => {
         let settled = false;
         let activePending = 0;
-        let retriedOnTransient = false;
+        let transientRetries = 0;
         let lastErr: unknown = null;
         const hedgeTimers: NodeJS.Timeout[] = [];
         const clearHedges = () => hedgeTimers.forEach((t) => clearTimeout(t));
@@ -539,12 +554,18 @@ Reply immediately in natural English (1 short sentence + 1 short question, max 2
               if (settled) return;
               startHedge();
               const msg = err instanceof Error ? err.message : String(err);
-              const isTransient = msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('DEADLINE_EXCEEDED');
-              if (isTransient && !retriedOnTransient && Date.now() - startedAt < 6500) {
-                retriedOnTransient = true;
+              const isTransient =
+                msg.includes('503') ||
+                msg.includes('UNAVAILABLE') ||
+                msg.includes('DEADLINE_EXCEEDED') ||
+                msg.includes('429') ||
+                msg.includes('RESOURCE_EXHAUSTED');
+              if (isTransient && transientRetries < 2 && Date.now() - startedAt < 8000) {
+                transientRetries += 1;
+                const delay = transientRetries * 450;
                 setTimeout(() => {
                   if (!settled) launch('gemini-3.1-flash-lite', ThinkingLevel.MINIMAL);
-                }, 350);
+                }, delay);
                 return;
               }
               if (activePending <= 0) {
@@ -559,7 +580,7 @@ Reply immediately in natural English (1 short sentence + 1 short question, max 2
         launch('gemini-3.1-flash-lite', ThinkingLevel.MINIMAL);
         hedgeTimers.push(setTimeout(startHedge, 2500));
       }),
-      11000
+      12500
     );
 
     const parsed = JSON.parse((response.text ?? '{}').trim());
