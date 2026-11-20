@@ -446,10 +446,10 @@ export default function App() {
         streamController.abort();
         fallbackController.abort();
         setIsTyping(false);
-      }, 11500);
+      }, 22000);
 
       const sendStreamRequest = async (): Promise<void> => {
-        const timer = window.setTimeout(() => streamController.abort(), 9500);
+        const timer = window.setTimeout(() => streamController.abort(), 16000);
         try {
           const res = await fetch('/api/chat/stream', {
             method: 'POST',
@@ -459,7 +459,11 @@ export default function App() {
           });
 
           if (!res.ok || !res.body) {
-            throw new Error('Stream unavailable');
+            const err = new Error('Stream unavailable') as Error & { noRetry?: boolean };
+            if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
+              err.noRetry = true;
+            }
+            throw err;
           }
 
           const reader = res.body.getReader();
@@ -527,7 +531,7 @@ export default function App() {
                   });
                 } else if (evt.type === 'error') {
                   const err = new Error(evt.error || 'Connection error') as Error & { noRetry?: boolean };
-                  if (evt.status && evt.status >= 400 && evt.status !== 500) {
+                  if (evt.status && evt.status >= 400 && evt.status < 500 && evt.status !== 408 && evt.status !== 429) {
                     err.noRetry = true;
                   }
                   throw err;
@@ -547,19 +551,28 @@ export default function App() {
         }
       };
 
-      const sendChatRequest = async (): Promise<void> => {
-        const timer = window.setTimeout(() => fallbackController.abort(), 9000);
+      const sendChatRequest = async (attempt = 0): Promise<void> => {
+        const controller = attempt === 0 ? fallbackController : new AbortController();
+        const timer = window.setTimeout(() => controller.abort(), 16000);
         try {
           const res = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: requestBody,
-            signal: fallbackController.signal,
+            signal: controller.signal,
           });
-          const data = (await res.json()) as ChatPayload & { error?: string };
-          if (!res.ok || !data.replyEnglish) {
-            const err = new Error(data.error || 'Connection error') as Error & { noRetry?: boolean };
-            if (res.status >= 400 && res.status !== 500) {
+          const rawText = await res.text();
+          let data: (ChatPayload & { error?: string }) | null = null;
+          try {
+            data = JSON.parse(rawText) as ChatPayload & { error?: string };
+          } catch {
+            data = null;
+          }
+
+          if (!res.ok || !data?.replyEnglish) {
+            const msg = data?.error || (res.status >= 500 ? 'Temporary server timeout. Tap Retry.' : 'Connection error');
+            const err = new Error(msg) as Error & { noRetry?: boolean };
+            if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
               err.noRetry = true;
             }
             throw err;
@@ -568,17 +581,27 @@ export default function App() {
             streamController.abort();
             applyCompletedReply(data);
           }
+        } catch (err: unknown) {
+          if (
+            attempt === 0 &&
+            !winnerLocked &&
+            !(err instanceof Error && (err as Error & { noRetry?: boolean }).noRetry) &&
+            (typeof navigator === 'undefined' || navigator.onLine)
+          ) {
+            return sendChatRequest(1);
+          }
+          throw err;
         } finally {
           window.clearTimeout(timer);
         }
       };
 
-      // Launch SSE stream immediately, and if no token arrives within 900ms,
+      // Launch SSE stream immediately, and if no token arrives within 200ms (e.g. proxy buffering),
       // race /api/chat in parallel so there is no dead pause before responding.
       let fallbackPromise: Promise<void> | null = null;
       const startFallbackOnce = () => {
         if (!fallbackPromise && !winnerLocked) {
-          fallbackPromise = sendChatRequest();
+          fallbackPromise = sendChatRequest(0);
         }
         return fallbackPromise;
       };
@@ -587,7 +610,7 @@ export default function App() {
         if (!firstTokenReceived && !winnerLocked) {
           startFallbackOnce()?.catch(() => {});
         }
-      }, 900);
+      }, 200);
 
       try {
         try {
@@ -801,9 +824,18 @@ export default function App() {
           <button
             type="button"
             onClick={() => setMobileView('list')}
-            className="text-xs font-semibold text-[#1E40AF] truncate cursor-pointer py-1"
+            className="text-xs font-semibold text-[#1E40AF] whitespace-nowrap cursor-pointer py-1 shrink-0"
           >
-            {activeScenarioMeta.title} ▾
+            {activeScenario === 'conversation'
+              ? 'Topics'
+              : activeScenario === 'airport'
+              ? 'Airport'
+              : activeScenario === 'work'
+              ? 'Work'
+              : activeScenario === 'doctor'
+              ? 'Doctor'
+              : 'Friends'}{' '}
+            ▾
           </button>
           <div className="flex items-center gap-1 bg-[#E2E8F0] p-0.5 rounded-lg shrink-0">
             {LEVELS.map((lvl) => (

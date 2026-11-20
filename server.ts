@@ -112,12 +112,28 @@ const LEVEL_INSTRUCTIONS: Record<string, string> = {
 };
 
 export const app = express();
+// Guard against Vercel pre-parsed req.body causing express.json() to hang waiting on drained stream
+app.use((req, _res, next) => {
+  const r = req as unknown as { body?: unknown; _body?: boolean };
+  if (r.body !== undefined && !Buffer.isBuffer(r.body)) {
+    r._body = true;
+  }
+  next();
+});
 app.use(express.json({ limit: '15mb' }));
 
 app.get('/api/health', (_req, res) => {
+  const apiConfigured = Boolean(getCleanApiKey());
+  if (apiConfigured) {
+    try {
+      getAiClient();
+    } catch {
+      // Ignore pre-warm errors
+    }
+  }
   res.json({
     status: 'ok',
-    apiConfigured: Boolean(getCleanApiKey()),
+    apiConfigured,
   });
 });
 
@@ -221,18 +237,18 @@ app.post('/api/chat/stream', async (req, res) => {
       ? `[TRANS]\nNatural translation of the reply into ${transLang}\n`
       : '';
 
-    const systemInstruction = `You are Alex, a friendly English conversation partner in "Learn English via Conversation".
+    const systemInstruction = `You are Alex in "Learn English via Conversation".
 Context: ${scenarioInfo}
 Level: ${levelInfo}
-Reply IMMEDIATELY with 1-2 short sentences in natural English + 1 short question (do NOT write [REPLY] or any prefix). Then append only these markers:
+Reply immediately with 1 short sentence in natural English + 1 short question (max 25 words total, no [REPLY] tag). Then append only:
 [MISTAKE]
-YES or NO (if NO omit [CORRECTED] and [EXPLAIN])
+YES or NO (omit [CORRECTED] and [EXPLAIN] if NO)
 [CORRECTED]
-Corrected sentence in natural English (only if YES)
+Natural corrected English sentence (if YES)
 [EXPLAIN]
-1 short tip in simple English (only if YES)
+1 short tip in simple English (max 15 words, if YES)
 ${transMarkerInstruction}[HINT]
-1 short suggested reply in natural English`;
+1 short reply idea in English (max 12 words)`;
 
     const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
       let timer: NodeJS.Timeout;
@@ -278,15 +294,28 @@ ${transMarkerInstruction}[HINT]
                 contents: prompt,
                 config: {
                   systemInstruction,
-                  maxOutputTokens: 220,
                   thinkingConfig: { thinkingLevel },
                 },
               })
               .then(async (stream) => {
                 const iter: StreamIter = stream[Symbol.asyncIterator]();
-                const firstStep = await iter.next();
-                if (settled || clientClosed) {
+                let firstStep = await iter.next();
+                while (!firstStep.done && !(firstStep.value?.text ?? '')) {
+                  if (settled || clientClosed) {
+                    iter.return?.().catch(() => {});
+                    return;
+                  }
+                  firstStep = await iter.next();
+                }
+                if (settled || clientClosed || firstStep.done) {
                   iter.return?.().catch(() => {});
+                  if (!settled && firstStep.done) {
+                    failures += 1;
+                    if (failures >= 2) {
+                      settled = true;
+                      reject(lastErr || new Error('Empty stream response.'));
+                    }
+                  }
                   return;
                 }
                 settled = true;
@@ -303,11 +332,11 @@ ${transMarkerInstruction}[HINT]
               });
           };
 
-          // Race both fast models from t=0ms with zero hedge pause
+          // Race both fast models from t=0ms with valid ThinkingLevel per model
           launch('gemini-3.1-flash-lite', ThinkingLevel.MINIMAL);
-          launch('gemini-4-hydrogen', ThinkingLevel.MINIMAL);
+          launch('gemini-4-hydrogen', ThinkingLevel.LOW);
         }),
-        8000,
+        14000,
         'chat stream first chunk'
       );
 
@@ -406,7 +435,7 @@ app.post('/api/chat', async (req, res) => {
     const systemInstruction = `You are Alex, a friendly English conversation partner in "Learn English via Conversation".
 Context: ${scenarioInfo}
 Level: ${levelInfo}
-Reply immediately in natural English (1-2 short sentences + 1 short question in replyEnglish). Set hasMistake=true only for real mistakes or non-English words, and provide correctedEnglish + 1 brief explanation in simple English (explanation). Always provide suggestedNextReply in natural English.${
+Reply immediately in natural English (1 short sentence + 1 short question, max 25 words, in replyEnglish). Set hasMistake=true only for real mistakes or non-English words, and provide correctedEnglish + 1 brief tip in simple English (max 15 words, in explanation). Always provide suggestedNextReply in natural English (max 12 words).${
       transLang ? ` Also provide replyTranslation of replyEnglish in ${transLang}.` : ''
     }`;
 
@@ -452,7 +481,6 @@ Reply immediately in natural English (1-2 short sentences + 1 short question in 
               contents: prompt,
               config: {
                 systemInstruction,
-                maxOutputTokens: 220,
                 thinkingConfig: { thinkingLevel },
                 responseMimeType: 'application/json',
                 responseSchema: {
@@ -478,11 +506,11 @@ Reply immediately in natural English (1-2 short sentences + 1 short question in 
             });
         };
 
-        // Race both fast models at t=0ms
+        // Race both fast models at t=0ms with valid ThinkingLevel per model
         launch('gemini-3.1-flash-lite', ThinkingLevel.MINIMAL);
-        launch('gemini-4-hydrogen', ThinkingLevel.MINIMAL);
+        launch('gemini-4-hydrogen', ThinkingLevel.LOW);
       }),
-      8000
+      14000
     );
 
     const parsed = JSON.parse((response.text ?? '{}').trim());
@@ -759,26 +787,53 @@ app.post('/api/translate', async (req, res) => {
     const ai = getAiClient();
     const systemInstruction = `Translate the user's English text accurately and naturally into ${targetLanguageName.slice(0, 80)}. Return ONLY the translated text with no quotes, labels, or commentary.`;
 
-    let response;
-    try {
-      response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-lite',
-        contents: text.slice(0, 2000),
-        config: {
-          systemInstruction,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
-        },
-      });
-    } catch {
-      response = await ai.models.generateContent({
-        model: 'gemini-4-hydrogen',
-        contents: text.slice(0, 2000),
-        config: {
-          systemInstruction,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-        },
-      });
-    }
+    const raceTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> => {
+      let timer: NodeJS.Timeout;
+      return Promise.race([
+        promise.finally(() => clearTimeout(timer)),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(() => reject(new Error('Translation timeout')), ms);
+        }),
+      ]);
+    };
+
+    const response = await raceTimeout(
+      new Promise<Awaited<ReturnType<typeof ai.models.generateContent>>>((resolve, reject) => {
+        let settled = false;
+        let failures = 0;
+        let lastErr: unknown = null;
+
+        const launch = (model: string, thinkingLevel: ThinkingLevel) => {
+          ai.models
+            .generateContent({
+              model,
+              contents: text.slice(0, 2000),
+              config: {
+                systemInstruction,
+                thinkingConfig: { thinkingLevel },
+              },
+            })
+            .then((resObj) => {
+              if (settled) return;
+              settled = true;
+              resolve(resObj);
+            })
+            .catch((err: unknown) => {
+              lastErr = err;
+              failures += 1;
+              if (settled) return;
+              if (failures >= 2) {
+                settled = true;
+                reject(lastErr || new Error('Translation failed'));
+              }
+            });
+        };
+
+        launch('gemini-3.1-flash-lite', ThinkingLevel.MINIMAL);
+        launch('gemini-4-hydrogen', ThinkingLevel.LOW);
+      }),
+      9000
+    );
 
     return res.json({ translation: (response.text ?? '').trim() });
   } catch (err: unknown) {
@@ -823,8 +878,9 @@ app.get(['/logos', '/logos/'], (_req, res) => {
 });
 
 async function startServer() {
-  if (!isProd) {
-    const { createServer: createViteServer } = await import('vite');
+  if (!isProd && !isVercel) {
+    const vitePkg = 'vite';
+    const { createServer: createViteServer } = await import(vitePkg);
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',

@@ -69,13 +69,25 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <h2 className="text-[14.5px] sm:text-[15px] font-semibold text-[#0F172A] truncate">
-              {scenario.id === 'conversation' ? 'Learn English via Conversation' : scenario.title}
-            </h2>
+            {scenario.id === 'conversation' ? (
+              <h2 className="text-[14.5px] sm:text-[15px] font-semibold text-[#0F172A] leading-tight">
+                <span className="sm:hidden">Learn English</span>
+                <span className="hidden sm:inline">Learn English via Conversation</span>
+              </h2>
+            ) : (
+              <h2 className="text-[14.5px] sm:text-[15px] font-semibold text-[#0F172A] leading-tight">
+                {scenario.title}
+              </h2>
+            )}
           </div>
-          <p className="text-[11px] text-[#475569] truncate">
+          <p className="text-[11px] text-[#475569] leading-tight">
             {isTyping ? (
               <span className="text-[#1E40AF] font-medium">Replying</span>
+            ) : scenario.id === 'conversation' ? (
+              <>
+                <span className="sm:hidden">via Conversation · {levelMeta.label}</span>
+                <span className="hidden sm:inline">{levelMeta.label} · English Practice</span>
+              </>
             ) : (
               <span>
                 {levelMeta.label} · English Practice
