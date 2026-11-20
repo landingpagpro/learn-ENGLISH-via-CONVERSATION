@@ -208,10 +208,7 @@ export default function App() {
   }, [liteMode]);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const handleSlowNetwork = useCallback(() => {
-    setLiteMode(true);
-  }, []);
-  const { loadingId, playingId, audioError, play: rawPlay, stop, unlockAudio } = useSpeechAudio(handleSlowNetwork);
+  const { loadingId, playingId, audioError, play: rawPlay, stop, unlockAudio } = useSpeechAudio();
 
   const play = useCallback(
     (opts: { id: string; text: string; level: ProficiencyLevel; slow?: boolean }) => {
@@ -328,14 +325,14 @@ export default function App() {
       const replyMsgId = `reply-${Date.now()}`;
       let autoSpoken = false;
       let winnerLocked = false;
-      let firstTokenReceived = false;
+      let replyCompleteReceived = false;
+      let hardStopped = false;
 
       const streamController = new AbortController();
       const fallbackController = new AbortController();
 
       const updateStreamedReplyText = (partialReply: string) => {
         if (!partialReply) return;
-        firstTokenReceived = true;
         setThreads((prev) => {
           const latest = prev[threadKey] || currentThread;
           const exists = latest.messages.some((m) => m.id === replyMsgId);
@@ -444,13 +441,14 @@ export default function App() {
       });
 
       const hardStopTimer = window.setTimeout(() => {
+        hardStopped = true;
         streamController.abort();
         fallbackController.abort();
         setIsTyping(false);
-      }, 22000);
+      }, 26000);
 
       const sendStreamRequest = async (): Promise<void> => {
-        const timer = window.setTimeout(() => streamController.abort(), 16000);
+        const timer = window.setTimeout(() => streamController.abort(), 12000);
         try {
           const res = await fetch('/api/chat/stream', {
             method: 'POST',
@@ -508,6 +506,7 @@ export default function App() {
                   streamedReply = evt.replyEnglish;
                   updateStreamedReplyText(streamedReply);
                 } else if (evt.type === 'reply_complete' && evt.replyEnglish) {
+                  replyCompleteReceived = true;
                   streamedReply = evt.replyEnglish;
                   updateStreamedReplyText(streamedReply);
                   if (autoSpeakRef.current && !autoSpoken) {
@@ -521,6 +520,7 @@ export default function App() {
                   }
                 } else if (evt.type === 'done') {
                   completed = true;
+                  replyCompleteReceived = true;
                   fallbackController.abort();
                   applyCompletedReply({
                     replyEnglish: evt.replyEnglish || streamedReply,
@@ -541,10 +541,7 @@ export default function App() {
             }
           }
 
-          if (!completed && !winnerLocked && streamedReply) {
-            fallbackController.abort();
-            applyCompletedReply({ replyEnglish: streamedReply });
-          } else if (!completed && !winnerLocked) {
+          if (!completed && !winnerLocked) {
             throw new Error('Incomplete reply');
           }
         } finally {
@@ -554,7 +551,7 @@ export default function App() {
 
       const sendChatRequest = async (attempt = 0): Promise<void> => {
         const controller = attempt === 0 ? fallbackController : new AbortController();
-        const timer = window.setTimeout(() => controller.abort(), 16000);
+        const timer = window.setTimeout(() => controller.abort(), 12000);
         try {
           const res = await fetch('/api/chat', {
             method: 'POST',
@@ -586,6 +583,7 @@ export default function App() {
           if (
             attempt === 0 &&
             !winnerLocked &&
+            !hardStopped &&
             !(err instanceof Error && (err as Error & { noRetry?: boolean }).noRetry) &&
             (typeof navigator === 'undefined' || navigator.onLine)
           ) {
@@ -597,21 +595,21 @@ export default function App() {
         }
       };
 
-      // Launch SSE stream immediately, and if no token arrives within 200ms (e.g. proxy buffering),
-      // race /api/chat in parallel so there is no dead pause before responding.
+      // Launch SSE stream immediately, and if full reply hasn't arrived within 200ms
+      // (e.g. proxy buffering or mid-stream stall), race /api/chat in parallel.
       let fallbackPromise: Promise<void> | null = null;
       const startFallbackOnce = () => {
-        if (!fallbackPromise && !winnerLocked) {
+        if (!fallbackPromise && !winnerLocked && !hardStopped) {
           fallbackPromise = sendChatRequest(0);
         }
         return fallbackPromise;
       };
 
       const parallelRaceTimer = window.setTimeout(() => {
-        if (!firstTokenReceived && !winnerLocked) {
+        if (!replyCompleteReceived && !winnerLocked && !hardStopped) {
           startFallbackOnce()?.catch(() => {});
         }
-      }, 200);
+      }, 1000);
 
       try {
         try {
@@ -628,7 +626,11 @@ export default function App() {
         }
       } catch (err: unknown) {
         if (!winnerLocked) {
-          const msg = err instanceof Error ? err.message : 'Please check your internet connection.';
+          const rawMsg = err instanceof Error ? err.message : '';
+          const msg =
+            !rawMsg || (err instanceof DOMException && err.name === 'AbortError') || /abort/i.test(rawMsg)
+              ? 'Connection timed out. Please tap Retry.'
+              : rawMsg;
           setFailedMessage(text);
           setChatError(msg);
         }

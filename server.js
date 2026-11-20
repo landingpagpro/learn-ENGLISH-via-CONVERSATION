@@ -18,12 +18,18 @@ function getCleanApiKey() {
   if (!cleaned || cleaned === "MY_GEMINI_API_KEY") return null;
   return cleaned;
 }
+var cachedAiClient = null;
+var cachedAiKey = null;
 function getAiClient() {
   const apiKey = getCleanApiKey();
   if (!apiKey) {
     throw new Error("MISSING_GEMINI_API_KEY");
   }
-  return new GoogleGenAI({
+  if (cachedAiClient && cachedAiKey === apiKey) {
+    return cachedAiClient;
+  }
+  cachedAiKey = apiKey;
+  cachedAiClient = new GoogleGenAI({
     apiKey,
     httpOptions: {
       headers: {
@@ -31,37 +37,38 @@ function getAiClient() {
       }
     }
   });
+  return cachedAiClient;
 }
 function formatServerError(err, fallbackMsg) {
   const raw = err instanceof Error ? err.message : String(err);
   if (raw.includes("MISSING_GEMINI_API_KEY")) {
     return {
       status: 503,
-      message: "GEMINI_API_KEY is missing in Render Environment Variables."
+      message: "GEMINI_API_KEY is missing in environment variables."
     };
   }
   if (raw.includes("API_KEY_INVALID") || raw.includes("API key not valid") || raw.includes("PERMISSION_DENIED") || raw.includes("403") || raw.includes("401")) {
     return {
       status: 401,
-      message: "Invalid GEMINI_API_KEY in server Environment Variables."
+      message: "Invalid GEMINI_API_KEY in environment variables."
     };
   }
   if (raw.includes("429") || raw.includes("RESOURCE_EXHAUSTED")) {
     return {
       status: 429,
-      message: "Rate limit reached. Please wait a few seconds and tap Retry."
+      message: "Rate limit reached. Wait a moment and tap Retry."
     };
   }
   if (raw.includes("NOT_FOUND") || raw.includes("404")) {
     return {
       status: 502,
-      message: "AI model not available for this API key. Check your Gemini API key access."
+      message: "AI model unavailable for this API key."
     };
   }
   if (raw.includes("timeout") || raw.includes("Timeout") || raw.includes("503") || raw.includes("UNAVAILABLE")) {
     return {
       status: 503,
-      message: "Server is waking up or timed out. Please tap Retry."
+      message: "Server is busy or restarting. Tap Retry."
     };
   }
   return {
@@ -70,23 +77,40 @@ function formatServerError(err, fallbackMsg) {
   };
 }
 var SCENARIO_CONTEXT = {
-  conversation: "Open everyday Italian conversation on any topic the learner chooses. Keep the tone warm, natural, and engaging.",
-  airport: "At an Italian international airport (check-in desk, security, boarding gate, baggage claim). Act as a helpful travel partner or airport staff member.",
-  work: "At a modern Italian workplace. Act as a friendly coworker chatting before a meeting, discussing tasks, deadlines, and teamwork.",
-  doctor: "At a medical clinic in Italy. Act as a warm, reassuring doctor asking about symptoms and explaining next steps clearly.",
-  meeting: "Meeting someone new at a casual Italian caf\xE9 or social gathering. Act as a friendly conversation partner who enjoys making new friends."
+  conversation: "Open everyday English conversation on any topic the learner chooses. Keep the tone warm, natural, and engaging.",
+  airport: "At an international airport (check-in desk, security, boarding gate, baggage claim). Act as a helpful travel partner or airport staff member.",
+  work: "At a modern workplace. Act as a friendly coworker chatting before a meeting, discussing tasks, deadlines, and teamwork.",
+  doctor: "At a medical clinic. Act as a warm, reassuring doctor asking about symptoms and explaining next steps clearly.",
+  meeting: "Meeting someone new at a casual coffee shop or social gathering. Act as a friendly conversation partner who enjoys making new friends."
 };
 var LEVEL_INSTRUCTIONS = {
-  beginner: "BEGINNER (A1-A2): Use very simple, high-frequency Italian words and short sentences (1-2 short sentences max). Avoid complex idioms or slang. Speak gently and patiently.",
-  intermediate: "INTERMEDIATE (B1-B2): Use natural everyday conversational Italian, common expressions, and 2-3 friendly sentences. Ask engaging follow-up questions.",
-  advanced: "ADVANCED (C1-C2): Use authentic, idiomatic Italian with natural expressions, subtle humor, and rich conversational depth."
+  beginner: "BEGINNER (A1-A2): Use very simple, high-frequency English words and short sentences (1-2 short sentences max). Avoid complex idioms or slang. Speak gently and patiently.",
+  intermediate: "INTERMEDIATE (B1-B2): Use natural everyday conversational English, common expressions, and 2-3 friendly sentences. Ask engaging follow-up questions.",
+  advanced: "ADVANCED (C1-C2): Use authentic, idiomatic English with natural expressions, subtle humor, and rich conversational depth."
 };
 var app = express();
+app.use((req, _res, next) => {
+  const r = req;
+  if (r.body !== void 0 && !Buffer.isBuffer(r.body)) {
+    r._body = true;
+  }
+  next();
+});
 app.use(express.json({ limit: "15mb" }));
 app.get("/api/health", (_req, res) => {
+  const apiConfigured = Boolean(getCleanApiKey());
+  if (apiConfigured) {
+    try {
+      getAiClient();
+    } catch {
+    }
+  }
   res.json({
     status: "ok",
-    apiConfigured: Boolean(getCleanApiKey())
+    app: "learn-english-via-conversation",
+    partner: "Alex",
+    language: "en-US",
+    apiConfigured
   });
 });
 function parseStreamedSections(raw) {
@@ -103,19 +127,19 @@ function parseStreamedSections(raw) {
     }
     return raw.slice(start, end).trim();
   };
-  const replyItalianRaw = extract("[REPLY]", ["[MISTAKE]", "[CORRECTED]", "[EXPLAIN]", "[TRANS]", "[HINT]"]);
-  const replyItalian = replyItalianRaw || (raw.indexOf("[REPLY]") === -1 ? raw.split(/\[(?:MISTAKE|CORRECTED|EXPLAIN|TRANS|HINT)\]/)[0].trim() : "");
+  const replyEnglishRaw = extract("[REPLY]", ["[MISTAKE]", "[CORRECTED]", "[EXPLAIN]", "[TRANS]", "[HINT]"]);
+  const replyEnglish = replyEnglishRaw || (raw.indexOf("[REPLY]") === -1 ? raw.split(/\[(?:MISTAKE|CORRECTED|EXPLAIN|TRANS|HINT)\]/)[0].trim() : "");
   const mistakeFlag = extract("[MISTAKE]", ["[CORRECTED]", "[EXPLAIN]", "[TRANS]", "[HINT]"]).toUpperCase();
-  const correctedItalian = extract("[CORRECTED]", ["[EXPLAIN]", "[TRANS]", "[HINT]"]);
+  const correctedEnglish = extract("[CORRECTED]", ["[EXPLAIN]", "[TRANS]", "[HINT]"]);
   const explanation = extract("[EXPLAIN]", ["[TRANS]", "[HINT]"]);
   const replyTranslation = extract("[TRANS]", ["[HINT]"]);
   const suggestedNextReply = extract("[HINT]", []);
-  const hasMistake = mistakeFlag.startsWith("YES") || mistakeFlag.startsWith("TRUE") || correctedItalian.length > 0 && correctedItalian.toLowerCase() !== "none";
+  const hasMistake = mistakeFlag.startsWith("YES") || mistakeFlag.startsWith("TRUE") || correctedEnglish.length > 0 && correctedEnglish.toLowerCase() !== "none";
   return {
     hasMistake,
-    correctedItalian: hasMistake && correctedItalian.toLowerCase() !== "none" ? correctedItalian : "",
+    correctedEnglish: hasMistake && correctedEnglish.toLowerCase() !== "none" ? correctedEnglish : "",
     explanation: hasMistake && explanation.toLowerCase() !== "none" ? explanation : "",
-    replyItalian,
+    replyEnglish,
     replyTranslation,
     suggestedNextReply
   };
@@ -138,6 +162,9 @@ app.post("/api/chat/stream", async (req, res) => {
   res.write(`: connected ${" ".repeat(1024)}
 
 `);
+  res.write(`data: ${JSON.stringify({ type: "start" })}
+
+`);
   let clientClosed = false;
   res.on("close", () => {
     if (!res.writableEnded) {
@@ -147,7 +174,7 @@ app.post("/api/chat/stream", async (req, res) => {
   try {
     const { scenarioId, level, history, userMessage, targetLanguageName } = req.body;
     if (!userMessage || typeof userMessage !== "string" || !userMessage.trim()) {
-      res.write(`data: ${JSON.stringify({ type: "error", status: 400, error: "Message text is required." })}
+      res.write(`data: ${JSON.stringify({ type: "error", status: 400, error: "Please enter a message." })}
 
 `);
       return res.end();
@@ -156,27 +183,21 @@ app.post("/api/chat/stream", async (req, res) => {
     const { scenarioInfo, levelInfo, prompt } = buildChatPrompts(scenarioId, level, history, userMessage);
     const transLang = targetLanguageName?.trim();
     const transMarkerInstruction = transLang ? `[TRANS]
-Accurate natural translation of [REPLY] into ${transLang}
+Natural translation of the reply into ${transLang}
 ` : "";
-    const systemInstruction = `You are Marco, a friendly native Italian conversation partner in "Learn Italian via Conversation".
+    const systemInstruction = `You are Alex in "Learn English via Conversation".
 Context: ${scenarioInfo}
 Level: ${levelInfo}
-Rules:
-- Reply directly in natural Italian to what the learner actually asked or said. Follow their topic even if it changes (sports, food, culture, travel, daily life).
-- If they write broken Italian or mix another language, understand their intent, answer directly in Italian, and teach the natural Italian phrasing in [CORRECTED] + [EXPLAIN].
-- Keep [REPLY] concise (1-2 short natural Italian sentences + 1 short follow-up question in Italian).
-
-Use ONLY these exact markers in order, starting immediately with [REPLY]:
-[REPLY]
-Your direct Italian reply
+ALWAYS write your reply, correction, explanation, and hint strictly in English (never reply in Italian or any other language).
+Reply immediately with 1 short sentence in natural English + 1 short question (max 25 words total, no [REPLY] tag). Then append only:
 [MISTAKE]
-YES or NO (ignore minor punctuation/capitalization/missing accents if unambiguous; if NO, omit [CORRECTED] and [EXPLAIN])
+YES or NO (omit [CORRECTED] and [EXPLAIN] if NO)
 [CORRECTED]
-Natural Italian version of learner's message (only if YES)
+Natural corrected English sentence (if YES)
 [EXPLAIN]
-1 short simple-English grammar tip explaining why in Italian (only if YES)
+1 short tip in simple English (max 15 words, if YES)
 ${transMarkerInstruction}[HINT]
-1 short Italian reply the learner can say next`;
+1 short reply idea in English (max 12 words)`;
     const withTimeout = (promise, ms, label) => {
       let timer;
       const timeoutPromise = new Promise((_resolve, reject) => {
@@ -201,11 +222,19 @@ ${transMarkerInstruction}[HINT]
       const winner = await withTimeout(
         new Promise((resolve, reject) => {
           let settled = false;
-          let hedgeStarted = false;
-          let failures = 0;
+          let activePending = 0;
           let lastErr = null;
-          let hedgeTimer = null;
+          const hedgeTimers = [];
+          const clearHedges = () => hedgeTimers.forEach((t) => clearTimeout(t));
+          let hedgeStarted = false;
+          const startHedge = () => {
+            if (hedgeStarted || settled || clientClosed) return;
+            hedgeStarted = true;
+            launch("gemini-4-hydrogen", ThinkingLevel.LOW);
+          };
           const launch = (model, thinkingLevel) => {
+            if (settled || clientClosed) return;
+            activePending += 1;
             ai.models.generateContentStream({
               model,
               contents: prompt,
@@ -215,39 +244,48 @@ ${transMarkerInstruction}[HINT]
               }
             }).then(async (stream) => {
               const iter = stream[Symbol.asyncIterator]();
-              const firstStep = await iter.next();
-              if (settled || clientClosed) {
+              let firstStep = await iter.next();
+              while (!firstStep.done && !(firstStep.value?.text ?? "")) {
+                if (settled || clientClosed) {
+                  iter.return?.().catch(() => {
+                  });
+                  return;
+                }
+                firstStep = await iter.next();
+              }
+              activePending -= 1;
+              if (settled || clientClosed || firstStep.done) {
                 iter.return?.().catch(() => {
                 });
+                if (!settled && firstStep.done) {
+                  startHedge();
+                  if (activePending <= 0) {
+                    settled = true;
+                    clearHedges();
+                    reject(lastErr || new Error("Empty stream response."));
+                  }
+                }
                 return;
               }
               settled = true;
-              if (hedgeTimer) clearTimeout(hedgeTimer);
+              clearHedges();
               resolve({ iter, firstStep });
             }).catch((err) => {
+              activePending -= 1;
               lastErr = err;
-              failures += 1;
               if (settled) return;
-              if (!hedgeStarted) {
-                hedgeStarted = true;
-                if (hedgeTimer) clearTimeout(hedgeTimer);
-                launch("gemini-4-hydrogen", ThinkingLevel.LOW);
-              } else if (failures >= 2) {
+              startHedge();
+              if (activePending <= 0) {
                 settled = true;
-                if (hedgeTimer) clearTimeout(hedgeTimer);
+                clearHedges();
                 reject(lastErr || new Error("Service temporarily busy."));
               }
             });
           };
           launch("gemini-3.1-flash-lite", ThinkingLevel.MINIMAL);
-          hedgeTimer = setTimeout(() => {
-            if (!settled && !hedgeStarted && !clientClosed) {
-              hedgeStarted = true;
-              launch("gemini-4-hydrogen", ThinkingLevel.LOW);
-            }
-          }, 900);
+          hedgeTimers.push(setTimeout(startHedge, 2500));
         }),
-        8500,
+        11e3,
         "chat stream first chunk"
       );
       activeIter = winner.iter;
@@ -259,38 +297,36 @@ ${transMarkerInstruction}[HINT]
         if (piece) {
           fullText += piece;
           const replyStart = fullText.indexOf("[REPLY]");
-          if (replyStart !== -1) {
-            let afterTag = fullText.slice(replyStart + "[REPLY]".length);
-            const nextMarkerIdx = afterTag.search(/\n?\[(?:MISTAKE|CORRECTED|EXPLAIN|TRANS|HINT)\]/);
-            if (nextMarkerIdx !== -1) {
-              afterTag = afterTag.slice(0, nextMarkerIdx);
-              const finalReplyChunk = afterTag.replace(/^\s+/, "").trim();
-              if (!replyCompletedSent && finalReplyChunk) {
-                replyCompletedSent = true;
-                lastSentReply = finalReplyChunk;
-                res.write(`data: ${JSON.stringify({ type: "reply_complete", replyItalian: finalReplyChunk })}
+          let afterTag = replyStart !== -1 ? fullText.slice(replyStart + "[REPLY]".length) : fullText;
+          const nextMarkerIdx = afterTag.search(/\n?\[(?:MISTAKE|CORRECTED|EXPLAIN|TRANS|HINT)\]/);
+          if (nextMarkerIdx !== -1) {
+            afterTag = afterTag.slice(0, nextMarkerIdx);
+            const finalReplyChunk = afterTag.replace(/^\s+/, "").trim();
+            if (!replyCompletedSent && finalReplyChunk) {
+              replyCompletedSent = true;
+              lastSentReply = finalReplyChunk;
+              res.write(`data: ${JSON.stringify({ type: "reply_complete", replyEnglish: finalReplyChunk })}
 
 `);
-              }
-            } else {
-              afterTag = afterTag.replace(/\n?\[[A-Z_]{0,12}$/, "");
-              const cleanReply = afterTag.replace(/^\s+/, "");
-              if (cleanReply && cleanReply.length > lastSentReply.length && cleanReply.startsWith(lastSentReply)) {
-                const delta = cleanReply.slice(lastSentReply.length);
-                lastSentReply = cleanReply;
-                res.write(`data: ${JSON.stringify({ type: "reply_delta", delta })}
+            }
+          } else {
+            afterTag = afterTag.replace(/\n?\[(?:R|RE|REP|REPL|REPLY|M|MI|MIS|MIST|MISTA|MISTAK|MISTAKE|C|CO|H|HI|T|TR|E|EX)?$/i, "");
+            const cleanReply = afterTag.replace(/^\s+/, "");
+            if (cleanReply && cleanReply.length > lastSentReply.length && cleanReply.startsWith(lastSentReply)) {
+              const delta = cleanReply.slice(lastSentReply.length);
+              lastSentReply = cleanReply;
+              res.write(`data: ${JSON.stringify({ type: "reply_delta", delta })}
 
 `);
-              } else if (cleanReply && cleanReply !== lastSentReply) {
-                lastSentReply = cleanReply;
-                res.write(`data: ${JSON.stringify({ type: "reply", replyItalian: cleanReply })}
+            } else if (cleanReply && cleanReply !== lastSentReply) {
+              lastSentReply = cleanReply;
+              res.write(`data: ${JSON.stringify({ type: "reply", replyEnglish: cleanReply })}
 
 `);
-              }
             }
           }
         }
-        step = await withTimeout(activeIter.next(), 4500, "chat stream next chunk");
+        step = await withTimeout(activeIter.next(), 9e3, "chat stream next chunk");
       }
       succeeded = true;
     } catch (err) {
@@ -309,8 +345,8 @@ ${transMarkerInstruction}[HINT]
       throw new Error("Service temporarily busy.");
     }
     const parsed = parseStreamedSections(fullText);
-    if (!parsed.replyItalian && lastSentReply) {
-      parsed.replyItalian = lastSentReply;
+    if (!parsed.replyEnglish && lastSentReply) {
+      parsed.replyEnglish = lastSentReply;
     }
     res.write(`data: ${JSON.stringify({ type: "done", ...parsed })}
 
@@ -332,26 +368,27 @@ app.post("/api/chat", async (req, res) => {
   try {
     const { scenarioId, level, history, userMessage, targetLanguageName } = req.body;
     if (!userMessage || typeof userMessage !== "string" || !userMessage.trim()) {
-      return res.status(400).json({ error: "Message text is required." });
+      return res.status(400).json({ error: "Please enter a message." });
     }
     const ai = getAiClient();
     const { scenarioInfo, levelInfo, prompt } = buildChatPrompts(scenarioId, level, history, userMessage);
     const transLang = targetLanguageName?.trim();
-    const systemInstruction = `You are Marco, a friendly native Italian conversation partner.
+    const systemInstruction = `You are Alex, a friendly English conversation partner in "Learn English via Conversation".
 Context: ${scenarioInfo}
 Level: ${levelInfo}
-Reply directly in natural Italian to what the learner actually asked/said (follow their topic even if it changes). Keep replyItalian concise (1-2 short Italian sentences + 1 short Italian question). Set hasMistake=true only for real Italian mistakes or non-Italian words, and give correctedItalian + 1 short encouraging explanation in simple English. Always give suggestedNextReply in natural Italian.${transLang ? ` Also provide replyTranslation of replyItalian in ${transLang}.` : ""}`;
+ALWAYS write replyEnglish, correctedEnglish, explanation, and suggestedNextReply strictly in English (never reply in Italian or any other language).
+Reply immediately in natural English (1 short sentence + 1 short question, max 25 words, in replyEnglish). Set hasMistake=true only for real mistakes or non-English words, and provide correctedEnglish + 1 brief tip in simple English (max 15 words, in explanation). Always provide suggestedNextReply in natural English (max 12 words).${transLang ? ` Also provide replyTranslation of replyEnglish in ${transLang}.` : ""}`;
     const schemaProperties = {
-      replyItalian: { type: Type.STRING },
+      replyEnglish: { type: Type.STRING },
       hasMistake: { type: Type.BOOLEAN },
-      correctedItalian: { type: Type.STRING },
+      correctedEnglish: { type: Type.STRING },
       explanation: { type: Type.STRING },
       suggestedNextReply: { type: Type.STRING }
     };
     const requiredFields = [
-      "replyItalian",
+      "replyEnglish",
       "hasMistake",
-      "correctedItalian",
+      "correctedEnglish",
       "explanation",
       "suggestedNextReply"
     ];
@@ -368,56 +405,69 @@ Reply directly in natural Italian to what the learner actually asked/said (follo
         })
       ]);
     };
+    const callChatModel = (model, thinkingLevel) => ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: {
+        systemInstruction,
+        thinkingConfig: { thinkingLevel },
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: schemaProperties,
+          required: requiredFields
+        }
+      }
+    });
+    const startedAt = Date.now();
     const response = await raceTimeout(
       new Promise((resolve, reject) => {
         let settled = false;
-        let hedgeStarted = false;
-        let failures = 0;
+        let activePending = 0;
+        let retriedOnTransient = false;
         let lastErr = null;
-        let hedgeTimer = null;
+        const hedgeTimers = [];
+        const clearHedges = () => hedgeTimers.forEach((t) => clearTimeout(t));
+        let hedgeStarted = false;
+        const startHedge = () => {
+          if (hedgeStarted || settled) return;
+          hedgeStarted = true;
+          launch("gemini-4-hydrogen", ThinkingLevel.LOW);
+        };
         const launch = (model, thinkingLevel) => {
-          ai.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-              systemInstruction,
-              thinkingConfig: { thinkingLevel },
-              responseMimeType: "application/json",
-              responseSchema: {
-                type: Type.OBJECT,
-                properties: schemaProperties,
-                required: requiredFields
-              }
-            }
-          }).then((resObj) => {
+          if (settled) return;
+          activePending += 1;
+          callChatModel(model, thinkingLevel).then((resObj) => {
+            activePending -= 1;
             if (settled) return;
             settled = true;
-            if (hedgeTimer) clearTimeout(hedgeTimer);
+            clearHedges();
             resolve(resObj);
           }).catch((err) => {
+            activePending -= 1;
             lastErr = err;
-            failures += 1;
             if (settled) return;
-            if (!hedgeStarted) {
-              hedgeStarted = true;
-              if (hedgeTimer) clearTimeout(hedgeTimer);
-              launch("gemini-4-hydrogen", ThinkingLevel.LOW);
-            } else if (failures >= 2) {
+            startHedge();
+            const msg = err instanceof Error ? err.message : String(err);
+            const isTransient = msg.includes("503") || msg.includes("UNAVAILABLE") || msg.includes("DEADLINE_EXCEEDED");
+            if (isTransient && !retriedOnTransient && Date.now() - startedAt < 6500) {
+              retriedOnTransient = true;
+              setTimeout(() => {
+                if (!settled) launch("gemini-3.1-flash-lite", ThinkingLevel.MINIMAL);
+              }, 350);
+              return;
+            }
+            if (activePending <= 0) {
               settled = true;
-              if (hedgeTimer) clearTimeout(hedgeTimer);
-              reject(lastErr || new Error("Chat failed"));
+              clearHedges();
+              reject(lastErr || new Error("Chat error"));
             }
           });
         };
         launch("gemini-3.1-flash-lite", ThinkingLevel.MINIMAL);
-        hedgeTimer = setTimeout(() => {
-          if (!settled && !hedgeStarted) {
-            hedgeStarted = true;
-            launch("gemini-4-hydrogen", ThinkingLevel.LOW);
-          }
-        }, 1e3);
+        hedgeTimers.push(setTimeout(startHedge, 2500));
       }),
-      8500
+      11e3
     );
     const parsed = JSON.parse((response.text ?? "{}").trim());
     return res.json(parsed);
@@ -425,7 +475,7 @@ Reply directly in natural Italian to what the learner actually asked/said (follo
     console.error("Chat error:", err);
     const { status, message } = formatServerError(
       err,
-      "The server is temporarily busy. Please try again."
+      "Server is temporarily busy. Please try again."
     );
     return res.status(status).json({ error: message });
   }
@@ -436,16 +486,16 @@ app.post("/api/phrases", async (req, res) => {
     const ai = getAiClient();
     const scenarioInfo = SCENARIO_CONTEXT[scenarioId] || SCENARIO_CONTEXT.conversation;
     const levelInfo = LEVEL_INSTRUCTIONS[level] || LEVEL_INSTRUCTIONS.beginner;
-    const contextLines = (recentMessages || []).slice(-4).map((m) => `${m.sender === "user" ? "Learner" : "Marco"}: ${String(m.text || "").slice(0, 300)}`).join("\n");
+    const contextLines = (recentMessages || []).slice(-4).map((m) => `${m.sender === "user" ? "Learner" : "Alex"}: ${String(m.text || "").slice(0, 300)}`).join("\n");
     const response = await ai.models.generateContent({
       model: "gemini-3.1-flash-lite",
-      contents: `Generate 5 practical spoken Italian phrases to practice.
+      contents: `Generate 5 practical spoken English phrases to use in this conversation.
 Scenario: ${scenarioInfo}
 Level: ${levelInfo}
 Recent chat:
-${contextLines || "Opening"}`,
+${contextLines || "Start"}`,
       config: {
-        systemInstruction: "You are a native Italian coach. Return exactly 5 useful spoken Italian phrases matching the scenario and level, each with a concise simple-English meaning and a brief 1-sentence usage tip.",
+        systemInstruction: "You are a friendly native English tutor. Return exactly 5 useful spoken English phrases suited to the context and level, each with a brief explanation/synonym in simple English (meaning) and 1 short usage tip in simple English (usageNote).",
         thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         responseMimeType: "application/json",
         responseSchema: {
@@ -453,11 +503,11 @@ ${contextLines || "Opening"}`,
           items: {
             type: Type.OBJECT,
             properties: {
-              italian: { type: Type.STRING },
+              english: { type: Type.STRING },
               meaning: { type: Type.STRING },
               usageNote: { type: Type.STRING }
             },
-            required: ["italian", "meaning", "usageNote"]
+            required: ["english", "meaning", "usageNote"]
           }
         }
       }
@@ -465,7 +515,7 @@ ${contextLines || "Opening"}`,
     const items = JSON.parse((response.text ?? "[]").trim());
     const phrases = items.slice(0, 5).map((item, idx) => ({
       id: `gen-${Date.now()}-${idx}`,
-      italian: item.italian,
+      english: item.english,
       meaning: item.meaning,
       usageNote: item.usageNote,
       memorized: false
@@ -475,7 +525,7 @@ ${contextLines || "Opening"}`,
     console.error("Phrases error:", err);
     const { status, message } = formatServerError(
       err,
-      "Could not generate new phrases right now. Please try again."
+      "Unable to generate new phrases right now. Please try again."
     );
     return res.status(status).json({ error: message });
   }
@@ -488,7 +538,7 @@ app.post("/api/tts/stream", async (req, res) => {
     }
     const ai = getAiClient();
     const shouldSpeakSlow = Boolean(slow);
-    const style = shouldSpeakSlow ? "Speak clear, warm standard Italian gently at a comfortable pace for a learner." : level === "beginner" ? "Speak clear, warm standard Italian at a natural, steady pace." : "Friendly, articulate native Italian speaker at a natural conversational pace.";
+    const style = shouldSpeakSlow ? "Speak strictly in clear, warm standard American English (en-US) gently at a comfortable pace for a learner." : level === "beginner" ? "Speak strictly in clear, warm standard American English (en-US) at a natural, steady pace." : "Friendly, articulate native American English (en-US) speaker at a natural conversational pace.";
     let ttsClientClosed = false;
     res.on("close", () => {
       if (!res.writableEnded) {
@@ -553,7 +603,7 @@ app.post("/api/tts", async (req, res) => {
     }
     const ai = getAiClient();
     const shouldSpeakSlow = Boolean(slow);
-    const style = shouldSpeakSlow ? "Speak clear, warm standard Italian gently at a comfortable pace for a learner." : level === "beginner" ? "Speak clear, warm standard Italian at a natural, steady pace." : "Friendly, articulate native Italian speaker at a natural conversational pace.";
+    const style = shouldSpeakSlow ? "Speak strictly in clear, warm standard American English (en-US) gently at a comfortable pace for a learner." : level === "beginner" ? "Speak strictly in clear, warm standard American English (en-US) at a natural, steady pace." : "Friendly, articulate native American English (en-US) speaker at a natural conversational pace.";
     const response = await ai.models.generateContent({
       model: "gemini-3.8-flash-lite-tts",
       contents: [
@@ -609,7 +659,7 @@ app.post("/api/transcribe", async (req, res) => {
             }
           },
           {
-            text: "Transcribe the spoken audio accurately in the exact language spoken (likely Italian or mixed with another language). Return ONLY the transcribed text without quotes or commentary. If the audio is silent or unintelligible, return an empty string."
+            text: "Transcribe the spoken audio accurately in the exact language spoken (likely English or mixed with another language). Return ONLY the transcribed text without quotes or commentary. If the audio is silent or unintelligible, return an empty string."
           }
         ]
       }
@@ -628,27 +678,48 @@ app.post("/api/translate", async (req, res) => {
       return res.status(400).json({ error: "Text and target language are required." });
     }
     const ai = getAiClient();
-    const systemInstruction = `Translate the user's Italian text accurately and naturally into ${targetLanguageName.slice(0, 80)}. Return ONLY the translated text with no quotes, labels, or commentary.`;
-    let response;
-    try {
-      response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite",
-        contents: text.slice(0, 2e3),
-        config: {
-          systemInstruction,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL }
-        }
-      });
-    } catch {
-      response = await ai.models.generateContent({
-        model: "gemini-4-hydrogen",
-        contents: text.slice(0, 2e3),
-        config: {
-          systemInstruction,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
-        }
-      });
-    }
+    const systemInstruction = `Translate the user's English text accurately and naturally into ${targetLanguageName.slice(0, 80)}. Return ONLY the translated text with no quotes, labels, or commentary.`;
+    const raceTimeout = (promise, ms) => {
+      let timer;
+      return Promise.race([
+        promise.finally(() => clearTimeout(timer)),
+        new Promise((_resolve, reject) => {
+          timer = setTimeout(() => reject(new Error("Translation timeout")), ms);
+        })
+      ]);
+    };
+    const response = await raceTimeout(
+      new Promise((resolve, reject) => {
+        let settled = false;
+        let failures = 0;
+        let lastErr = null;
+        const launch = (model, thinkingLevel) => {
+          ai.models.generateContent({
+            model,
+            contents: text.slice(0, 2e3),
+            config: {
+              systemInstruction,
+              thinkingConfig: { thinkingLevel }
+            }
+          }).then((resObj) => {
+            if (settled) return;
+            settled = true;
+            resolve(resObj);
+          }).catch((err) => {
+            lastErr = err;
+            failures += 1;
+            if (settled) return;
+            if (failures >= 2) {
+              settled = true;
+              reject(lastErr || new Error("Translation failed"));
+            }
+          });
+        };
+        launch("gemini-3.1-flash-lite", ThinkingLevel.MINIMAL);
+        launch("gemini-4-hydrogen", ThinkingLevel.LOW);
+      }),
+      9e3
+    );
     return res.json({ translation: (response.text ?? "").trim() });
   } catch (err) {
     console.error("Translate error:", err);
@@ -687,8 +758,9 @@ app.get(["/logos", "/logos/"], (_req, res) => {
   return res.sendFile(path.join(resolveLogosDir(), "index.html"));
 });
 async function startServer() {
-  if (!isProd) {
-    const { createServer: createViteServer } = await import("vite");
+  if (!isProd && !isVercel) {
+    const vitePkg = "vite";
+    const { createServer: createViteServer } = await import(vitePkg);
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa"

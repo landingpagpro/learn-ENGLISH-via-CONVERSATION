@@ -133,6 +133,9 @@ app.get('/api/health', (_req, res) => {
   }
   res.json({
     status: 'ok',
+    app: 'learn-english-via-conversation',
+    partner: 'Alex',
+    language: 'en-US',
     apiConfigured,
   });
 });
@@ -285,10 +288,22 @@ ${transMarkerInstruction}[HINT]
       const winner = await withTimeout(
         new Promise<{ iter: StreamIter; firstStep: StreamStep }>((resolve, reject) => {
           let settled = false;
-          let failures = 0;
+          let activePending = 0;
           let lastErr: unknown = null;
+          const hedgeTimers: NodeJS.Timeout[] = [];
+          const clearHedges = () => hedgeTimers.forEach((t) => clearTimeout(t));
+
+          // Primary fast model at t=0ms; hedge to gemini-4-hydrogen only on error or after 2500ms
+          let hedgeStarted = false;
+          const startHedge = () => {
+            if (hedgeStarted || settled || clientClosed) return;
+            hedgeStarted = true;
+            launch('gemini-4-hydrogen', ThinkingLevel.LOW);
+          };
 
           const launch = (model: string, thinkingLevel: ThinkingLevel) => {
+            if (settled || clientClosed) return;
+            activePending += 1;
             ai.models
               .generateContentStream({
                 model,
@@ -308,36 +323,40 @@ ${transMarkerInstruction}[HINT]
                   }
                   firstStep = await iter.next();
                 }
+                activePending -= 1;
                 if (settled || clientClosed || firstStep.done) {
                   iter.return?.().catch(() => {});
                   if (!settled && firstStep.done) {
-                    failures += 1;
-                    if (failures >= 2) {
+                    startHedge();
+                    if (activePending <= 0) {
                       settled = true;
+                      clearHedges();
                       reject(lastErr || new Error('Empty stream response.'));
                     }
                   }
                   return;
                 }
                 settled = true;
+                clearHedges();
                 resolve({ iter, firstStep });
               })
               .catch((err: unknown) => {
+                activePending -= 1;
                 lastErr = err;
-                failures += 1;
                 if (settled) return;
-                if (failures >= 2) {
+                startHedge();
+                if (activePending <= 0) {
                   settled = true;
+                  clearHedges();
                   reject(lastErr || new Error('Service temporarily busy.'));
                 }
               });
           };
 
-          // Race both fast models from t=0ms with valid ThinkingLevel per model
           launch('gemini-3.1-flash-lite', ThinkingLevel.MINIMAL);
-          launch('gemini-4-hydrogen', ThinkingLevel.LOW);
+          hedgeTimers.push(setTimeout(startHedge, 2500));
         }),
-        14000,
+        11000,
         'chat stream first chunk'
       );
 
@@ -375,7 +394,7 @@ ${transMarkerInstruction}[HINT]
             }
           }
         }
-        step = await withTimeout(activeIter.next(), 4500, 'chat stream next chunk');
+        step = await withTimeout(activeIter.next(), 9000, 'chat stream next chunk');
       }
 
       succeeded = true;
@@ -470,49 +489,77 @@ Reply immediately in natural English (1 short sentence + 1 short question, max 2
       ]);
     };
 
+    const callChatModel = (model: string, thinkingLevel: ThinkingLevel) =>
+      ai.models.generateContent({
+        model,
+        contents: prompt,
+        config: {
+          systemInstruction,
+          thinkingConfig: { thinkingLevel },
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: schemaProperties,
+            required: requiredFields,
+          },
+        },
+      });
+
+    const startedAt = Date.now();
     const response = await raceTimeout(
       new Promise<Awaited<ReturnType<typeof ai.models.generateContent>>>((resolve, reject) => {
         let settled = false;
-        let failures = 0;
+        let activePending = 0;
+        let retriedOnTransient = false;
         let lastErr: unknown = null;
+        const hedgeTimers: NodeJS.Timeout[] = [];
+        const clearHedges = () => hedgeTimers.forEach((t) => clearTimeout(t));
+
+        let hedgeStarted = false;
+        const startHedge = () => {
+          if (hedgeStarted || settled) return;
+          hedgeStarted = true;
+          launch('gemini-4-hydrogen', ThinkingLevel.LOW);
+        };
 
         const launch = (model: string, thinkingLevel: ThinkingLevel) => {
-          ai.models
-            .generateContent({
-              model,
-              contents: prompt,
-              config: {
-                systemInstruction,
-                thinkingConfig: { thinkingLevel },
-                responseMimeType: 'application/json',
-                responseSchema: {
-                  type: Type.OBJECT,
-                  properties: schemaProperties,
-                  required: requiredFields,
-                },
-              },
-            })
+          if (settled) return;
+          activePending += 1;
+          callChatModel(model, thinkingLevel)
             .then((resObj) => {
+              activePending -= 1;
               if (settled) return;
               settled = true;
+              clearHedges();
               resolve(resObj);
             })
             .catch((err: unknown) => {
+              activePending -= 1;
               lastErr = err;
-              failures += 1;
               if (settled) return;
-              if (failures >= 2) {
+              startHedge();
+              const msg = err instanceof Error ? err.message : String(err);
+              const isTransient = msg.includes('503') || msg.includes('UNAVAILABLE') || msg.includes('DEADLINE_EXCEEDED');
+              if (isTransient && !retriedOnTransient && Date.now() - startedAt < 6500) {
+                retriedOnTransient = true;
+                setTimeout(() => {
+                  if (!settled) launch('gemini-3.1-flash-lite', ThinkingLevel.MINIMAL);
+                }, 350);
+                return;
+              }
+              if (activePending <= 0) {
                 settled = true;
+                clearHedges();
                 reject(lastErr || new Error('Chat error'));
               }
             });
         };
 
-        // Race both fast models at t=0ms with valid ThinkingLevel per model
+        // Primary fast model at t=0ms; hedge to gemini-4-hydrogen only on error or after 2500ms
         launch('gemini-3.1-flash-lite', ThinkingLevel.MINIMAL);
-        launch('gemini-4-hydrogen', ThinkingLevel.LOW);
+        hedgeTimers.push(setTimeout(startHedge, 2500));
       }),
-      14000
+      11000
     );
 
     const parsed = JSON.parse((response.text ?? '{}').trim());

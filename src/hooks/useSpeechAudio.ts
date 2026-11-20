@@ -158,12 +158,8 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
       utterance.rate = slow ? 0.78 : 0.96;
       utterance.onstart = () => setPlayingId(id);
       utterance.onend = () => setPlayingId((curr) => (curr === id ? null : curr));
-      utterance.onerror = (event) => {
+      utterance.onerror = () => {
         setPlayingId((curr) => (curr === id ? null : curr));
-        const errCode = (event as SpeechSynthesisErrorEvent | undefined)?.error;
-        if (errCode !== 'interrupted' && errCode !== 'canceled' && errCode !== 'not-allowed') {
-          setAudioError('Unable to play audio right now.');
-        }
       };
       try {
         if (window.speechSynthesis.paused) {

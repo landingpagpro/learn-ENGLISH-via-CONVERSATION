@@ -185,7 +185,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             <span className="text-[11px] font-semibold text-[#1E40AF] block">
               Suggested reply:
             </span>
-            <p className="text-sm text-[#0F172A] truncate">
+            <p className="text-sm text-[#0F172A] leading-snug break-words">
               {suggestedHint}
             </p>
           </div>
@@ -234,8 +234,8 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             <span className="text-sm font-semibold text-[#0F172A] tabular-nums">
               {formatTimer(recordingSeconds)}
             </span>
-            <span className="text-xs text-[#475569] truncate">
-              Speak in English now
+            <span className="text-xs text-[#475569] whitespace-nowrap">
+              Speak English
             </span>
           </div>
 
@@ -276,8 +276,8 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
               disabled={isTranscribing}
               placeholder={
                 isTranscribing
-                  ? 'Transcribing your voice'
-                  : 'Type in English or tap the mic'
+                  ? 'Transcribing voice'
+                  : 'Type in English'
               }
               className="w-full min-h-[44px] bg-[#F8FAFC] rounded-xl px-4 py-2.5 text-[15px] text-[#0F172A] placeholder:text-[#64748B] border border-slate-200 focus:outline-none focus:border-[#1E40AF] focus:bg-white"
             />
