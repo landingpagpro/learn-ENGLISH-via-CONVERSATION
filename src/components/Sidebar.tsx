@@ -1,5 +1,5 @@
 import React from 'react';
-import { Briefcase, MessageSquare, Plane, Stethoscope, Users } from 'lucide-react';
+import { Briefcase, Download, MessageSquare, Plane, Stethoscope, Users } from 'lucide-react';
 import { APP_LOGO_URL, LEVELS, SCENARIOS } from '../data/scenarios';
 import { ConversationThread, ProficiencyLevel, ScenarioId } from '../types';
 
@@ -36,33 +36,42 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="flex items-center gap-3 min-w-0">
           {imgError ? (
             <div className="w-9 h-9 rounded-lg bg-[#1E40AF] text-white font-bold text-xs flex items-center justify-center border border-[#1E40AF]/20 shrink-0">
-              LE
+              IT
             </div>
           ) : (
             <img
               src={APP_LOGO_URL}
-              alt="Learn English via Conversation"
+              alt="Impara l'Italiano con la Conversazione"
               referrerPolicy="no-referrer"
               onError={() => setImgError(true)}
               className="w-9 h-9 rounded-lg object-cover border border-slate-200 shrink-0 bg-white"
             />
           )}
           <div className="min-w-0">
-            <h1 className="text-[15px] font-bold text-[#0F172A] leading-tight truncate">
-              Learn English via Conversation
+            <h1 className="text-[13.5px] sm:text-[14px] font-bold text-[#0F172A] leading-tight">
+              Impara l'Italiano con la Conversazione
             </h1>
-            <p className="text-[11px] text-[#475569] truncate">
-              Interactive Speaking Practice
+            <p className="text-[11px] text-[#475569]">
+              Pratica interattiva di conversazione
             </p>
           </div>
         </div>
+        <a
+          href="/api/logos/italian/download"
+          download="impara-italiano-logo.jpg"
+          title="Scarica il logo"
+          aria-label="Scarica il logo"
+          className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg border border-slate-200 bg-[#F8FAFC] text-[#1E40AF] hover:bg-[#EFF6FF] transition-colors shrink-0"
+        >
+          <Download className="w-4 h-4" />
+        </a>
       </div>
 
       {/* Level Selector (3 Levels) */}
       <div className="px-3.5 py-3 bg-[#EEF2F6] border-b border-slate-200 shrink-0">
         <div className="flex items-center justify-between gap-2 mb-2">
-          <span className="text-xs font-semibold text-[#0F172A]">Your Level</span>
-          <span className="text-[11px] text-[#1E40AF] font-medium truncate">
+          <span className="text-xs font-semibold text-[#0F172A]">Il tuo livello</span>
+          <span className="text-[11px] text-[#1E40AF] font-medium">
             {currentLevelMeta.description}
           </span>
         </div>
@@ -74,7 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 key={lvl.id}
                 type="button"
                 onClick={() => onSelectLevel(lvl.id)}
-                className={`min-h-[40px] px-2 py-1.5 rounded-md text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
+                className={`min-h-[40px] px-1.5 py-1.5 rounded-md text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
                   isActive
                     ? 'bg-white text-[#1E40AF] shadow-2xs'
                     : 'text-[#475569] hover:text-[#0F172A]'
@@ -90,7 +99,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Scenarios List */}
       <div className="px-4 pt-3 pb-1.5 bg-[#F8FAFC] shrink-0">
         <p className="text-xs font-semibold text-[#475569]">
-          Choose a topic to practice
+          Scegli un argomento per fare pratica
         </p>
       </div>
 
@@ -123,7 +132,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
                   <span
-                    className={`text-[14px] font-semibold truncate ${
+                    className={`text-[13.5px] font-semibold leading-snug ${
                       isSelected ? 'text-[#1E40AF]' : 'text-[#0F172A]'
                     }`}
                   >
@@ -137,7 +146,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
 
                 <div className="flex items-center justify-between gap-2 mt-0.5">
-                  <p className="text-xs text-[#64748B] truncate">
+                  <p className="text-xs text-[#64748B] leading-snug">
                     {lastMsg ? lastMsg.text : scenario.subtitle}
                   </p>
                   {msgCount > 0 && (
