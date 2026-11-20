@@ -65,7 +65,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   const startRecording = async () => {
     setMicError(null);
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setMicError('Il microfono non è supportato su questo browser.');
+      setMicError('Microphone is not supported in this browser.');
       return;
     }
 
@@ -100,7 +100,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
       }, 1000);
     } catch {
       cleanupStream();
-      setMicError('Consenti l’accesso al microfono nel browser per parlare.');
+      setMicError('Please allow microphone access in your browser to speak.');
     }
   };
 
@@ -129,7 +129,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
       setRecordingSeconds(0);
 
       if (blob.size < 400) {
-        setMicError('Audio troppo breve. Prova a parlare più vicino al microfono.');
+        setMicError('Audio too short. Please speak closer to the mic.');
         return;
       }
 
@@ -142,7 +142,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             const idx = result.indexOf(',');
             resolve(idx >= 0 ? result.slice(idx + 1) : result);
           };
-          reader.onerror = () => reject(new Error('Errore lettura audio'));
+          reader.onerror = () => reject(new Error('Audio read error'));
           reader.readAsDataURL(blob);
         });
 
@@ -155,12 +155,12 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
 
         const data = (await response.json()) as { text?: string; error?: string };
         if (!response.ok) {
-          throw new Error(data.error || 'Trascrizione non riuscita');
+          throw new Error(data.error || 'Transcription failed');
         }
 
         const transcript = (data.text || '').trim();
         if (!transcript) {
-          setMicError('Nessuna voce rilevata. Avvicinati al microfono e riprova.');
+          setMicError('No speech detected. Speak closer to the mic and try again.');
         } else {
           const prefix = inputTextRef.current.trim();
           const messageToSend = prefix ? `${prefix} ${transcript}` : transcript;
@@ -169,7 +169,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
           onSendMessage(messageToSend);
         }
       } catch {
-        setMicError('Impossibile trascrivere la voce. Riprova.');
+        setMicError('Could not transcribe voice. Please try again.');
       } finally {
         setIsTranscribing(false);
       }
@@ -194,7 +194,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
         <div className="mb-2 bg-[#F8FAFC] border border-[#1E40AF]/15 rounded-xl px-3 py-2 flex items-center justify-between gap-2 shadow-2xs">
           <div className="min-w-0">
             <span className="text-[11px] font-semibold text-[#1E40AF] block">
-              Risposta suggerita:
+              Suggested reply:
             </span>
             <p className="text-sm text-[#0F172A] leading-snug break-words">
               {suggestedHint}
@@ -209,7 +209,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             }}
             className="px-3 py-1.5 rounded-lg bg-[#EFF6FF] text-[#1E40AF] text-xs font-semibold whitespace-nowrap shrink-0 cursor-pointer hover:bg-[#DBEAFE]"
           >
-            Usa
+            Use
           </button>
         </div>
       )}
@@ -223,7 +223,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             onClick={() => setMicError(null)}
             className="text-rose-700 font-semibold px-2 py-0.5 cursor-pointer"
           >
-            Chiudi
+            Close
           </button>
         </div>
       )}
@@ -234,7 +234,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
           <button
             type="button"
             onClick={cancelRecording}
-            aria-label="Annulla registrazione"
+            aria-label="Cancel recording"
             className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
           >
             <Trash2 className="w-5 h-5" />
@@ -246,7 +246,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
               {formatTimer(recordingSeconds)}
             </span>
             <span className="text-xs text-[#475569] whitespace-nowrap">
-              Parla in italiano
+              Speak in English
             </span>
           </div>
 
@@ -256,7 +256,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             className="min-h-[44px] px-4 rounded-lg bg-[#1E40AF] text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-[#1E3A8A] active:scale-[0.98] transition-all cursor-pointer whitespace-nowrap"
           >
             <Send className="w-3.5 h-3.5" />
-            <span>Invia</span>
+            <span>Send</span>
           </button>
         </div>
       ) : (
@@ -265,8 +265,8 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             <button
               type="button"
               onClick={() => setShowHint((v) => !v)}
-              title="Risposta suggerita"
-              aria-label="Risposta suggerita"
+              title="Suggested reply"
+              aria-label="Suggested reply"
               className={`min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center transition-colors shrink-0 cursor-pointer ${
                 showHint
                   ? 'bg-[#EFF6FF] text-[#1E40AF]'
@@ -287,8 +287,8 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
               disabled={isTranscribing}
               placeholder={
                 isTranscribing
-                  ? 'Invio voce'
-                  : 'Scrivi in italiano'
+                  ? 'Sending voice'
+                  : 'Type in English'
               }
               className="w-full min-h-[44px] bg-[#F8FAFC] rounded-xl px-4 py-2.5 text-[15px] text-[#0F172A] placeholder:text-[#64748B] border border-slate-200 focus:outline-none focus:border-[#1E40AF] focus:bg-white"
             />
@@ -299,8 +299,8 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             type="button"
             onClick={startRecording}
             disabled={disabled || isTranscribing}
-            title="Parla con il microfono"
-            aria-label="Parla con il microfono"
+            title="Speak with microphone"
+            aria-label="Speak with microphone"
             className="min-w-[44px] min-h-[44px] rounded-xl bg-[#F8FAFC] border border-slate-200 text-[#1E40AF] hover:bg-[#EFF6FF] active:scale-[0.96] disabled:opacity-50 flex items-center justify-center transition-all shrink-0 cursor-pointer"
           >
             <Mic className={`w-5 h-5 ${isTranscribing ? 'animate-pulse' : ''}`} />
@@ -310,8 +310,8 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
           <button
             type="submit"
             disabled={!inputText.trim() || disabled || isTranscribing}
-            title="Invia"
-            aria-label="Invia messaggio"
+            title="Send"
+            aria-label="Send message"
             className="min-w-[44px] min-h-[44px] rounded-xl bg-[#1E40AF] text-white hover:bg-[#1E3A8A] active:scale-[0.96] disabled:bg-[#CBD5E1] disabled:cursor-not-allowed flex items-center justify-center transition-all shrink-0 cursor-pointer"
           >
             <Send className="w-5 h-5" />

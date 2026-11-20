@@ -32,16 +32,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
   return (
     <aside className="flex flex-col h-full w-full bg-[#F8FAFC] border-r border-slate-200 select-none">
       {/* Top App Bar */}
-      <div className="h-14 px-4 bg-white border-b border-slate-200 flex items-center justify-between shrink-0">
+      <div className="h-14 px-4 bg-white border-b border-slate-200 flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           {imgError ? (
             <div className="w-9 h-9 rounded-lg bg-[#1E40AF] text-white font-bold text-xs flex items-center justify-center border border-[#1E40AF]/20 shrink-0">
-              IT
+              EN
             </div>
           ) : (
             <img
               src={APP_LOGO_URL}
-              alt="Impara l'Italiano con la Conversazione"
+              alt="Learn English via Conversation"
               referrerPolicy="no-referrer"
               onError={() => setImgError(true)}
               className="w-9 h-9 rounded-lg object-cover border border-slate-200 shrink-0 bg-white"
@@ -49,18 +49,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
           <div className="min-w-0">
             <h1 className="text-[13.5px] sm:text-[14px] font-bold text-[#0F172A] leading-tight">
-              Impara l'Italiano con la Conversazione
+              Learn English via Conversation
             </h1>
             <p className="text-[11px] text-[#475569]">
-              Pratica interattiva di conversazione
+              Interactive conversation practice
             </p>
           </div>
         </div>
         <a
-          href="/api/logos/italian/download"
-          download="impara-italiano-logo.jpg"
-          title="Scarica il logo"
-          aria-label="Scarica il logo"
+          href="/api/logos/english/download"
+          download="learn-english-logo.jpg"
+          title="Download logo"
+          aria-label="Download logo"
           className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg border border-slate-200 bg-[#F8FAFC] text-[#1E40AF] hover:bg-[#EFF6FF] transition-colors shrink-0"
         >
           <Download className="w-4 h-4" />
@@ -70,7 +70,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Level Selector (3 Levels) */}
       <div className="px-3.5 py-3 bg-[#EEF2F6] border-b border-slate-200 shrink-0">
         <div className="flex items-center justify-between gap-2 mb-2">
-          <span className="text-xs font-semibold text-[#0F172A]">Il tuo livello</span>
+          <span className="text-xs font-semibold text-[#0F172A]">Your level</span>
           <span className="text-[11px] text-[#1E40AF] font-medium">
             {currentLevelMeta.description}
           </span>
@@ -99,7 +99,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Scenarios List */}
       <div className="px-4 pt-3 pb-1.5 bg-[#F8FAFC] shrink-0">
         <p className="text-xs font-semibold text-[#475569]">
-          Scegli un argomento per fare pratica
+          Choose a topic to practice
         </p>
       </div>
 

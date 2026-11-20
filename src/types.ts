@@ -3,13 +3,13 @@ export type ScenarioId = 'conversation' | 'airport' | 'work' | 'doctor' | 'meeti
 export type ProficiencyLevel = 'beginner' | 'intermediate' | 'advanced';
 
 export interface MistakeCorrection {
-  correctedItalian: string;
+  correctedEnglish: string;
   explanation: string;
 }
 
 export interface ChatMessage {
   id: string;
-  sender: 'user' | 'marco';
+  sender: 'user' | 'alex';
   text: string;
   translations?: Record<string, string>;
   timestamp: string;
@@ -19,7 +19,7 @@ export interface ChatMessage {
 
 export interface KeyPhrase {
   id: string;
-  italian: string;
+  english: string;
   meaning: string;
   usageNote: string;
   memorized?: boolean;

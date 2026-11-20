@@ -18,7 +18,7 @@ interface PhrasesPanelProps {
   loadingAudioId: string | null;
   onPlayAudio: (opts: { id: string; text: string; level: ProficiencyLevel; slow?: boolean }) => void;
   onToggleMemorized: (phraseId: string) => void;
-  onUseInChat: (italian: string) => void;
+  onUseInChat: (english: string) => void;
   onRefreshPhrases: () => void;
   onCloseMobile?: () => void;
 }
@@ -44,7 +44,7 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
         <div className="flex items-center gap-2 min-w-0">
           <BookOpen className="w-4 h-4 text-[#1E40AF] shrink-0" />
           <h3 className="text-[15px] font-bold text-[#0F172A]">
-            5 Frasi Chiave
+            5 Key Phrases
           </h3>
           <span className="text-xs font-medium text-[#64748B] tabular-nums shrink-0">
             {memorizedCount}/{phrases.length}
@@ -55,7 +55,7 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
           <button
             type="button"
             onClick={onCloseMobile}
-            aria-label="Chiudi"
+            aria-label="Close"
             className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center rounded-lg text-[#475569] hover:bg-black/5 cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -66,7 +66,7 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
       {/* Refresh Phrases Action */}
       <div className="px-4 py-3 border-b border-slate-200 bg-[#EEF2F6] flex items-center justify-between gap-2 shrink-0">
         <p className="text-xs text-[#475569]">
-          Esercitati e usale in chat
+          Practice and use in chat
         </p>
         <button
           type="button"
@@ -75,7 +75,7 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
           className="min-h-[36px] px-3 py-1.5 rounded-lg bg-[#EFF6FF] text-[#1E40AF] border border-[#1E40AF]/15 hover:bg-[#DBEAFE] disabled:opacity-60 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${isGenerating ? 'animate-pulse' : ''}`} />
-          <span>Nuove Frasi</span>
+          <span>New Phrases</span>
         </button>
       </div>
 
@@ -109,12 +109,12 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
                   }`}
                 >
                   <Check className="w-3.5 h-3.5" />
-                  <span>{phrase.memorized ? 'Memorizzata' : 'Segna memorizzata'}</span>
+                  <span>{phrase.memorized ? 'Memorized' : 'Mark memorized'}</span>
                 </button>
               </div>
 
               <p className="text-[15.5px] font-semibold text-[#0F172A] leading-snug mb-1.5">
-                {phrase.italian}
+                {phrase.english}
               </p>
 
               <p className="text-[13px] font-medium text-[#1E40AF] leading-snug mb-1">
@@ -131,7 +131,7 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
                   onClick={() =>
                     onPlayAudio({
                       id: audioId,
-                      text: phrase.italian,
+                      text: phrase.english,
                       level,
                       slow: level === 'beginner',
                     })
@@ -149,16 +149,16 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
                   ) : (
                     <Volume2 className="w-3.5 h-3.5 text-[#1E40AF]" />
                   )}
-                  <span>{isPlaying ? 'Ferma' : 'Ascolta'}</span>
+                  <span>{isPlaying ? 'Stop' : 'Listen'}</span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => onUseInChat(phrase.italian)}
+                  onClick={() => onUseInChat(phrase.english)}
                   className="flex-1 min-h-[38px] px-3 py-1.5 rounded-lg bg-[#EEF2F6] text-[#0F172A] hover:bg-[#E2E8F0] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <CornerDownLeft className="w-3.5 h-3.5 text-[#1E40AF]" />
-                  <span>Usa in chat</span>
+                  <span>Use in chat</span>
                 </button>
               </div>
             </div>

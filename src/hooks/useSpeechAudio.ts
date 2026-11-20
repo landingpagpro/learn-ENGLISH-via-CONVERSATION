@@ -37,17 +37,17 @@ function pcmBytesToWavBlob(pcmBytes: Uint8Array, sampleRate = 24000): Blob {
   return new Blob([header, pcmBytes.buffer as ArrayBuffer], { type: 'audio/wav' });
 }
 
-function pickItalianVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
+function pickEnglishVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
   if (!voices.length) return null;
-  const isItIt = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().replace('_', '-') === 'it-it';
-  const isIt = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().startsWith('it');
+  const isEnUs = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().replace('_', '-') === 'en-us';
+  const isEn = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().startsWith('en');
 
   return (
-    voices.find((v) => isItIt(v) && /google|samsung|alice|federica|luca|paolo|natural|cosimo|elsa/i.test(v.name)) ||
-    voices.find((v) => isItIt(v)) ||
-    voices.find((v) => isIt(v) && /google|samsung|natural|italian/i.test(v.name)) ||
-    voices.find((v) => isIt(v)) ||
-    voices.find((v) => /italian/i.test(v.name)) ||
+    voices.find((v) => isEnUs(v) && /google|samantha|ava|allison|natural|aria|jenny|guy/i.test(v.name)) ||
+    voices.find((v) => isEnUs(v)) ||
+    voices.find((v) => isEn(v) && /google|samsung|natural|english/i.test(v.name)) ||
+    voices.find((v) => isEn(v)) ||
+    voices.find((v) => /english/i.test(v.name)) ||
     null
   );
 }
@@ -146,14 +146,14 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
       if (voices.length > 0) {
         voicesRef.current = voices;
       }
-      const italianVoice = pickItalianVoice(voicesRef.current);
+      const englishVoice = pickEnglishVoice(voicesRef.current);
 
       const utterance = new SpeechSynthesisUtterance(text);
-      if (italianVoice) {
-        utterance.voice = italianVoice;
-        utterance.lang = italianVoice.lang;
+      if (englishVoice) {
+        utterance.voice = englishVoice;
+        utterance.lang = englishVoice.lang;
       } else {
-        utterance.lang = 'it-IT';
+        utterance.lang = 'en-US';
       }
       utterance.rate = slow ? 0.78 : 0.96;
       utterance.onstart = () => setPlayingId(id);

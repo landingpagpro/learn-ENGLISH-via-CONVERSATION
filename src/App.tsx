@@ -11,15 +11,15 @@ import { APP_LOGO_URL, INITIAL_PHRASES, LEVELS, SCENARIOS } from './data/scenari
 import { useSpeechAudio } from './hooks/useSpeechAudio';
 import { ChatMessage, ConversationThread, ProficiencyLevel, ScenarioId } from './types';
 
-const PHRASES_KEY = 'le_it_conv_phrases_v2';
-const AUTOSPEAK_KEY = 'le_it_conv_autospeak_v2';
-const LITEMODE_KEY = 'le_it_conv_litemode_v2';
-const TRANSLANG_KEY = 'le_it_conv_trans_lang_v2';
+const PHRASES_KEY = 'le_en_conv_phrases_v2';
+const AUTOSPEAK_KEY = 'le_en_conv_autospeak_v2';
+const LITEMODE_KEY = 'le_en_conv_litemode_v2';
+const TRANSLANG_KEY = 'le_en_conv_trans_lang_v2';
 const MAX_MESSAGES_PER_THREAD = 30;
 
 function formatTimeNow(): string {
   const now = new Date();
-  return now.toLocaleTimeString('it-IT', {
+  return now.toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -36,9 +36,9 @@ function createEmptyThread(scenarioId: ScenarioId, level: ProficiencyLevel): Con
 }
 
 interface ChatPayload {
-  replyItalian?: string;
+  replyEnglish?: string;
   hasMistake?: boolean;
-  correctedItalian?: string;
+  correctedEnglish?: string;
   explanation?: string;
   replyTranslation?: string;
   suggestedNextReply?: string;
@@ -75,6 +75,10 @@ export default function App() {
         'le_it_autospeak_v1',
         'le_it_litemode_v1',
         'le_it_trans_lang_v1',
+        'le_it_conv_phrases_v2',
+        'le_it_conv_autospeak_v2',
+        'le_it_conv_litemode_v2',
+        'le_it_conv_trans_lang_v2',
         'le_en_phrases_v1',
         'le_en_autospeak_v1',
         'le_en_litemode_v1',
@@ -292,7 +296,7 @@ export default function App() {
 
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         setFailedMessage(text);
-        setChatError('Sembri offline. Riconnettiti a internet e tocca Riprova.');
+        setChatError('You appear offline. Reconnect to the internet and tap Retry.');
         return;
       }
 
@@ -346,7 +350,7 @@ export default function App() {
                 ...latest.messages,
                 {
                   id: replyMsgId,
-                  sender: 'marco' as const,
+                  sender: 'alex' as const,
                   text: partialReply,
                   timestamp: formatTimeNow(),
                 },
@@ -367,7 +371,7 @@ export default function App() {
         if (winnerLocked) return;
         winnerLocked = true;
         setIsTyping(false);
-        const finalReply = payload.replyItalian || '';
+        const finalReply = payload.replyEnglish || '';
         if (finalReply && autoSpeakRef.current && !autoSpoken) {
           autoSpoken = true;
           play({
@@ -380,11 +384,11 @@ export default function App() {
         setThreads((prev) => {
           const latest = prev[threadKey] || currentThread;
           let messages = latest.messages.map((m) => {
-            if (m.id === userMsgId && payload.hasMistake && payload.correctedItalian) {
+            if (m.id === userMsgId && payload.hasMistake && payload.correctedEnglish) {
               return {
                 ...m,
                 correction: {
-                  correctedItalian: payload.correctedItalian,
+                  correctedEnglish: payload.correctedEnglish,
                   explanation: payload.explanation || '',
                 },
               };
@@ -410,7 +414,7 @@ export default function App() {
               ...messages,
               {
                 id: replyMsgId,
-                sender: 'marco',
+                sender: 'alex',
                 text: finalReply,
                 translations:
                   langCode && payload.replyTranslation
@@ -506,12 +510,12 @@ export default function App() {
                 if (evt.type === 'reply_delta' && evt.delta) {
                   streamedReply += evt.delta;
                   updateStreamedReplyText(streamedReply);
-                } else if (evt.type === 'reply' && evt.replyItalian) {
-                  streamedReply = evt.replyItalian;
+                } else if (evt.type === 'reply' && evt.replyEnglish) {
+                  streamedReply = evt.replyEnglish;
                   updateStreamedReplyText(streamedReply);
-                } else if (evt.type === 'reply_complete' && evt.replyItalian) {
+                } else if (evt.type === 'reply_complete' && evt.replyEnglish) {
                   replyCompleteReceived = true;
-                  streamedReply = evt.replyItalian;
+                  streamedReply = evt.replyEnglish;
                   updateStreamedReplyText(streamedReply);
                   if (autoSpeakRef.current && !autoSpoken) {
                     autoSpoken = true;
@@ -527,15 +531,15 @@ export default function App() {
                   replyCompleteReceived = true;
                   fallbackController.abort();
                   applyCompletedReply({
-                    replyItalian: evt.replyItalian || streamedReply,
+                    replyEnglish: evt.replyEnglish || streamedReply,
                     hasMistake: evt.hasMistake,
-                    correctedItalian: evt.correctedItalian,
+                    correctedEnglish: evt.correctedEnglish,
                     explanation: evt.explanation,
                     replyTranslation: evt.replyTranslation,
                     suggestedNextReply: evt.suggestedNextReply,
                   });
                 } else if (evt.type === 'error') {
-                  const err = new Error(evt.error || 'Errore di connessione') as Error & { noRetry?: boolean };
+                  const err = new Error(evt.error || 'Connection error') as Error & { noRetry?: boolean };
                   if (evt.status && evt.status >= 400 && evt.status < 500 && evt.status !== 408 && evt.status !== 429) {
                     err.noRetry = true;
                   }
@@ -546,7 +550,7 @@ export default function App() {
           }
 
           if (!completed && !winnerLocked) {
-            throw new Error('Risposta incompleta');
+            throw new Error('Incomplete reply');
           }
         } finally {
           window.clearTimeout(timer);
@@ -571,8 +575,8 @@ export default function App() {
             data = null;
           }
 
-          if (!res.ok || !data?.replyItalian) {
-            const msg = data?.error || (res.status >= 500 ? 'Timeout temporaneo del server. Tocca Riprova.' : 'Errore di connessione');
+          if (!res.ok || !data?.replyEnglish) {
+            const msg = data?.error || (res.status >= 500 ? 'Temporary server timeout. Tap Retry.' : 'Connection error');
             const err = new Error(msg) as Error & { noRetry?: boolean };
             if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
               err.noRetry = true;
@@ -624,7 +628,7 @@ export default function App() {
         } catch (streamErr: unknown) {
           if (winnerLocked) return;
           if (typeof navigator !== 'undefined' && !navigator.onLine) {
-            throw new Error('Sembri offline.');
+            throw new Error('You appear offline.');
           }
           if (streamErr instanceof Error && (streamErr as Error & { noRetry?: boolean }).noRetry) {
             throw streamErr;
@@ -636,7 +640,7 @@ export default function App() {
           const rawMsg = err instanceof Error ? err.message : '';
           const msg =
             !rawMsg || (err instanceof DOMException && err.name === 'AbortError') || /abort/i.test(rawMsg)
-              ? 'Connessione scaduta. Tocca Riprova.'
+              ? 'Connection timed out. Tap Retry.'
               : rawMsg;
           setFailedMessage(text);
           setChatError(msg);
@@ -692,7 +696,7 @@ export default function App() {
       };
 
       if (!response.ok || !data.phrases?.length) {
-        throw new Error(data.error || 'Impossibile generare nuove frasi.');
+        throw new Error(data.error || 'Could not generate new phrases.');
       }
 
       setThreads((prev) => {
@@ -706,15 +710,15 @@ export default function App() {
         };
       });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Impossibile aggiornare le frasi.';
+      const msg = err instanceof Error ? err.message : 'Could not refresh phrases.';
       setChatError(msg);
     } finally {
       setIsGeneratingPhrases(false);
     }
   }, [activeLevel, activeScenario, currentThread, threadKey]);
 
-  const handleUsePhraseInChat = useCallback((italian: string) => {
-    setInputText(italian);
+  const handleUsePhraseInChat = useCallback((english: string) => {
+    setInputText(english);
     setPhrasesDrawerOpen(false);
     setMobileView('chat');
   }, []);
@@ -736,7 +740,7 @@ export default function App() {
         });
         const data = (await response.json()) as { translation?: string; error?: string };
         if (!response.ok || !data.translation) {
-          throw new Error(data.error || 'Traduzione non riuscita');
+          throw new Error(data.error || 'Translation failed');
         }
         setThreads((prev) => {
           const thread = prev[threadKey] || currentThread;
@@ -756,7 +760,7 @@ export default function App() {
           };
         });
       } catch {
-        setChatError('Traduzione non riuscita. Riprova.');
+        setChatError('Translation failed. Please try again.');
       } finally {
         setTranslatingIds((prev) => {
           const next = { ...prev };
@@ -770,7 +774,7 @@ export default function App() {
 
   const latestPartnerMessage = useMemo(() => {
     for (let i = currentThread.messages.length - 1; i >= 0; i--) {
-      if (currentThread.messages[i].sender === 'marco') {
+      if (currentThread.messages[i].sender === 'alex') {
         return currentThread.messages[i];
       }
     }
@@ -837,14 +841,14 @@ export default function App() {
             className="text-xs font-semibold text-[#1E40AF] whitespace-nowrap cursor-pointer py-1 shrink-0"
           >
             {activeScenario === 'conversation'
-              ? 'Argomenti'
+              ? 'Topics'
               : activeScenario === 'airport'
-              ? 'Aeroporto'
+              ? 'Airport'
               : activeScenario === 'work'
-              ? 'Lavoro'
+              ? 'Work'
               : activeScenario === 'doctor'
-              ? 'Medico'
-              : 'Amici'}{' '}
+              ? 'Doctor'
+              : 'Friends'}{' '}
             ▾
           </button>
           <div className="flex items-center gap-1 bg-[#E2E8F0] p-0.5 rounded-lg shrink-0">
@@ -877,7 +881,7 @@ export default function App() {
                 —
               </span>
               <span>
-                Parla in modo naturale in italiano con Marco. Se fai un errore, ricevi subito correzioni e consigli.
+                Speak naturally in English with Alex. If you make a mistake, you get instant corrections and tips.
               </span>
             </div>
           </div>
@@ -889,12 +893,12 @@ export default function App() {
                 <div className="flex justify-center mb-3">
                   {logoError ? (
                     <div className="w-20 h-20 rounded-xl bg-[#1E40AF] text-white font-bold text-lg flex items-center justify-center border border-[#1E40AF]/20">
-                      IT
+                      EN
                     </div>
                   ) : (
                     <img
                       src={APP_LOGO_URL}
-                      alt="Impara l'Italiano con la Conversazione"
+                      alt="Learn English via Conversation"
                       referrerPolicy="no-referrer"
                       onError={() => setLogoError(true)}
                       className="w-20 h-20 rounded-xl object-cover border border-slate-200 bg-white"
@@ -909,11 +913,11 @@ export default function App() {
                 </p>
                 <button
                   type="button"
-                  onClick={() => handleSendMessage('Ciao! Vorrei fare pratica con il mio italiano.')}
+                  onClick={() => handleSendMessage('Hello! I would like to practice my English.')}
                   className="w-full min-h-[42px] px-4 py-2 rounded-lg bg-[#1E40AF] hover:bg-[#1E3A8A] text-white text-xs font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer"
                 >
                   <MessageCircle className="w-4 h-4" />
-                  <span>Inizia la conversazione</span>
+                  <span>Start conversation</span>
                 </button>
               </div>
             </div>
@@ -944,7 +948,7 @@ export default function App() {
               <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl px-4 py-2 text-xs max-w-md text-center flex items-center justify-center gap-2.5 flex-wrap">
                 <span>
                   {!isOnline
-                    ? 'Sembri offline. In attesa di connessione'
+                    ? 'You appear offline. Waiting for connection'
                     : chatError || audioError}
                 </span>
                 {failedMessage && isOnline && (
@@ -953,7 +957,7 @@ export default function App() {
                     onClick={() => handleSendMessage(failedMessage)}
                     className="px-2.5 py-1 rounded-lg bg-rose-700 text-white font-semibold hover:bg-rose-800 transition-colors cursor-pointer"
                   >
-                    Riprova
+                    Retry
                   </button>
                 )}
                 {isOnline && (
@@ -964,7 +968,7 @@ export default function App() {
                       setFailedMessage(null);
                     }}
                     className="text-rose-600 hover:text-rose-900 font-bold px-1 cursor-pointer"
-                    aria-label="Chiudi errore"
+                    aria-label="Dismiss error"
                   >
                     ×
                   </button>

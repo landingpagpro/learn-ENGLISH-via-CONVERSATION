@@ -91,24 +91,24 @@ function formatServerError(err: unknown, fallbackMsg: string): { status: number;
 
 const SCENARIO_CONTEXT: Record<string, string> = {
   conversation:
-    'Open everyday Italian conversation on any topic the learner chooses. Keep the tone warm, natural, and engaging.',
+    'Open everyday English conversation on any topic the learner chooses. Keep the tone warm, natural, and engaging.',
   airport:
-    'At an Italian international airport (check-in desk, security, boarding gate, baggage claim). Act as a helpful travel partner or airport staff member.',
+    'At an international airport (check-in desk, security, boarding gate, baggage claim). Act as a helpful travel partner or airport staff member.',
   work:
-    'At a modern Italian workplace. Act as a friendly coworker chatting before a meeting, discussing tasks, deadlines, and teamwork.',
+    'At a modern English-speaking workplace. Act as a friendly coworker chatting before a meeting, discussing tasks, deadlines, and teamwork.',
   doctor:
-    'At a medical clinic in Italy. Act as a warm, reassuring doctor asking about symptoms and explaining next steps clearly.',
+    'At a medical clinic. Act as a warm, reassuring doctor asking about symptoms and explaining next steps clearly.',
   meeting:
-    'Meeting someone new at a casual Italian café or social gathering. Act as a friendly conversation partner who enjoys making new friends.',
+    'Meeting someone new at a casual cafe or social gathering. Act as a friendly conversation partner who enjoys making new friends.',
 };
 
 const LEVEL_INSTRUCTIONS: Record<string, string> = {
   beginner:
-    'BEGINNER (A1-A2): Use very simple, high-frequency Italian words and short sentences (1-2 short sentences max). Avoid complex idioms or slang. Speak gently and patiently.',
+    'BEGINNER (A1-A2): Use very simple, high-frequency English words and short sentences (1-2 short sentences max). Avoid complex idioms or slang. Speak gently and patiently.',
   intermediate:
-    'INTERMEDIATE (B1-B2): Use natural everyday conversational Italian, common expressions, and 2-3 friendly sentences. Ask engaging follow-up questions.',
+    'INTERMEDIATE (B1-B2): Use natural everyday conversational English, common expressions, and 2-3 friendly sentences. Ask engaging follow-up questions.',
   advanced:
-    'ADVANCED (C1-C2): Use authentic, idiomatic Italian with natural expressions, subtle humor, and rich conversational depth.',
+    'ADVANCED (C1-C2): Use authentic, idiomatic English with natural expressions, subtle humor, and rich conversational depth.',
 };
 
 export const app = express();
@@ -122,6 +122,24 @@ app.use((req, _res, next) => {
 });
 app.use(express.json({ limit: '15mb' }));
 
+// Serve ads.txt and app-ads.txt if present in root or public
+app.get(['/ads.txt', '/app-ads.txt'], (req, res, next) => {
+  const filename = req.path.replace(/^\/+/, '');
+  const candidates = [
+    path.resolve(__dirname, filename),
+    path.resolve(process.cwd(), filename),
+    path.resolve(__dirname, 'public', filename),
+    path.resolve(process.cwd(), 'public', filename),
+  ];
+  for (const filePath of candidates) {
+    if (fs.existsSync(filePath)) {
+      res.type('text/plain');
+      return res.sendFile(filePath);
+    }
+  }
+  return next();
+});
+
 app.get('/api/health', (_req, res) => {
   const apiConfigured = Boolean(getCleanApiKey());
   if (apiConfigured) {
@@ -133,9 +151,9 @@ app.get('/api/health', (_req, res) => {
   }
   res.json({
     status: 'ok',
-    app: 'impara-italiano-con-la-conversazione',
-    partner: 'Marco',
-    language: 'it-IT',
+    app: 'learn-english-via-conversation',
+    partner: 'Alex',
+    language: 'en-US',
     apiConfigured,
   });
 });
@@ -156,14 +174,14 @@ function parseStreamedSections(raw: string) {
     return raw.slice(start, end).trim();
   };
 
-  const replyItalianRaw = extract('[REPLY]', ['[MISTAKE]', '[CORRECTED]', '[EXPLAIN]', '[TRANS]', '[HINT]']);
-  const replyItalian =
-    replyItalianRaw ||
+  const replyEnglishRaw = extract('[REPLY]', ['[MISTAKE]', '[CORRECTED]', '[EXPLAIN]', '[TRANS]', '[HINT]']);
+  const replyEnglish =
+    replyEnglishRaw ||
     (raw.indexOf('[REPLY]') === -1
       ? raw.split(/\[(?:MISTAKE|CORRECTED|EXPLAIN|TRANS|HINT)\]/)[0].trim()
       : '');
   const mistakeFlag = extract('[MISTAKE]', ['[CORRECTED]', '[EXPLAIN]', '[TRANS]', '[HINT]']).toUpperCase();
-  const correctedItalian = extract('[CORRECTED]', ['[EXPLAIN]', '[TRANS]', '[HINT]']);
+  const correctedEnglish = extract('[CORRECTED]', ['[EXPLAIN]', '[TRANS]', '[HINT]']);
   const explanation = extract('[EXPLAIN]', ['[TRANS]', '[HINT]']);
   const replyTranslation = extract('[TRANS]', ['[HINT]']);
   const suggestedNextReply = extract('[HINT]', []);
@@ -171,13 +189,13 @@ function parseStreamedSections(raw: string) {
   const hasMistake =
     mistakeFlag.startsWith('YES') ||
     mistakeFlag.startsWith('TRUE') ||
-    (correctedItalian.length > 0 && correctedItalian.toLowerCase() !== 'none');
+    (correctedEnglish.length > 0 && correctedEnglish.toLowerCase() !== 'none');
 
   return {
     hasMistake,
-    correctedItalian: hasMistake && correctedItalian.toLowerCase() !== 'none' ? correctedItalian : '',
+    correctedEnglish: hasMistake && correctedEnglish.toLowerCase() !== 'none' ? correctedEnglish : '',
     explanation: hasMistake && explanation.toLowerCase() !== 'none' ? explanation : '',
-    replyItalian,
+    replyEnglish,
     replyTranslation,
     suggestedNextReply,
   };
@@ -186,7 +204,7 @@ function parseStreamedSections(raw: string) {
 function buildChatPrompts(
   scenarioId: string,
   level: string,
-  history: Array<{ sender: 'user' | 'marco'; text: string }>,
+  history: Array<{ sender: 'user' | 'alex'; text: string }>,
   userMessage: string
 ) {
   const scenarioInfo = SCENARIO_CONTEXT[scenarioId] || SCENARIO_CONTEXT.conversation;
@@ -223,13 +241,13 @@ app.post('/api/chat/stream', async (req, res) => {
     const { scenarioId, level, history, userMessage, targetLanguageName } = req.body as {
       scenarioId: string;
       level: string;
-      history: Array<{ sender: 'user' | 'marco'; text: string }>;
+      history: Array<{ sender: 'user' | 'alex'; text: string }>;
       userMessage: string;
       targetLanguageName?: string;
     };
 
     if (!userMessage || typeof userMessage !== 'string' || !userMessage.trim()) {
-      res.write(`data: ${JSON.stringify({ type: 'error', status: 400, error: 'Inserisci un messaggio.' })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'error', status: 400, error: 'Please enter a message.' })}\n\n`);
       return res.end();
     }
 
@@ -240,19 +258,19 @@ app.post('/api/chat/stream', async (req, res) => {
       ? `[TRANS]\nNatural translation of the reply into ${transLang}\n`
       : '';
 
-    const systemInstruction = `You are Marco in "Impara l'Italiano con la Conversazione".
+    const systemInstruction = `You are Alex in "Learn English via Conversation".
 Context: ${scenarioInfo}
 Level: ${levelInfo}
-ALWAYS write your reply, correction, explanation, and hint strictly in Italian (never reply in English or any other language).
-Reply immediately with 1 short sentence in natural Italian + 1 short question (max 25 words total, no [REPLY] tag). Then append only:
+ALWAYS write your reply, correction, explanation, and hint strictly in English (never reply in Italian or any other language).
+Reply immediately with 1 short sentence in natural English + 1 short question (max 25 words total, no [REPLY] tag). Then append only:
 [MISTAKE]
 YES or NO (omit [CORRECTED] and [EXPLAIN] if NO)
 [CORRECTED]
-Natural corrected Italian sentence (if YES)
+Natural corrected English sentence (if YES)
 [EXPLAIN]
-1 short tip in simple Italian (max 15 words, if YES)
+1 short tip in simple English (max 15 words, if YES)
 ${transMarkerInstruction}[HINT]
-1 short reply idea in Italian (max 12 words)`;
+1 short reply idea in English (max 12 words)`;
 
     const withTimeout = <T,>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
       let timer: NodeJS.Timeout;
@@ -394,7 +412,7 @@ ${transMarkerInstruction}[HINT]
             if (!replyCompletedSent && finalReplyChunk) {
               replyCompletedSent = true;
               lastSentReply = finalReplyChunk;
-              res.write(`data: ${JSON.stringify({ type: 'reply_complete', replyItalian: finalReplyChunk })}\n\n`);
+              res.write(`data: ${JSON.stringify({ type: 'reply_complete', replyEnglish: finalReplyChunk })}\n\n`);
             }
           } else {
             afterTag = afterTag.replace(/\n?\[(?:R|RE|REP|REPL|REPLY|M|MI|MIS|MIST|MISTA|MISTAK|MISTAKE|C|CO|H|HI|T|TR|E|EX)?$/i, '');
@@ -405,7 +423,7 @@ ${transMarkerInstruction}[HINT]
               res.write(`data: ${JSON.stringify({ type: 'reply_delta', delta })}\n\n`);
             } else if (cleanReply && cleanReply !== lastSentReply) {
               lastSentReply = cleanReply;
-              res.write(`data: ${JSON.stringify({ type: 'reply', replyItalian: cleanReply })}\n\n`);
+              res.write(`data: ${JSON.stringify({ type: 'reply', replyEnglish: cleanReply })}\n\n`);
             }
           }
         }
@@ -431,8 +449,8 @@ ${transMarkerInstruction}[HINT]
     }
 
     const parsed = parseStreamedSections(fullText);
-    if (!parsed.replyItalian && lastSentReply) {
-      parsed.replyItalian = lastSentReply;
+    if (!parsed.replyEnglish && lastSentReply) {
+      parsed.replyEnglish = lastSentReply;
     }
 
     res.write(`data: ${JSON.stringify({ type: 'done', ...parsed })}\n\n`);
@@ -441,7 +459,7 @@ ${transMarkerInstruction}[HINT]
     console.error('Chat stream error:', err);
     const { status, message } = formatServerError(
       err,
-      'Connessione momentaneamente non riuscita. Riprova.'
+      'Connection temporarily interrupted. Please try again.'
     );
     res.write(`data: ${JSON.stringify({ type: 'error', status, error: message })}\n\n`);
     return res.end();
@@ -454,38 +472,38 @@ app.post('/api/chat', async (req, res) => {
     const { scenarioId, level, history, userMessage, targetLanguageName } = req.body as {
       scenarioId: string;
       level: string;
-      history: Array<{ sender: 'user' | 'marco'; text: string }>;
+      history: Array<{ sender: 'user' | 'alex'; text: string }>;
       userMessage: string;
       targetLanguageName?: string;
     };
 
     if (!userMessage || typeof userMessage !== 'string' || !userMessage.trim()) {
-      return res.status(400).json({ error: 'Inserisci un messaggio.' });
+      return res.status(400).json({ error: 'Please enter a message.' });
     }
 
     const ai = getAiClient();
     const { scenarioInfo, levelInfo, prompt } = buildChatPrompts(scenarioId, level, history, userMessage);
     const transLang = targetLanguageName?.trim();
 
-    const systemInstruction = `You are Marco, a friendly native Italian conversation partner in "Impara l'Italiano con la Conversazione".
+    const systemInstruction = `You are Alex, a friendly native English conversation partner in "Learn English via Conversation".
 Context: ${scenarioInfo}
 Level: ${levelInfo}
-ALWAYS write replyItalian, correctedItalian, explanation, and suggestedNextReply strictly in Italian (never reply in English or any other language).
-Reply immediately in natural Italian (1 short sentence + 1 short question, max 25 words, in replyItalian). Set hasMistake=true only for real mistakes or non-Italian words, and provide correctedItalian + 1 brief tip in simple Italian (max 15 words, in explanation). Always provide suggestedNextReply in natural Italian (max 12 words).${
-      transLang ? ` Also provide replyTranslation of replyItalian in ${transLang}.` : ''
+ALWAYS write replyEnglish, correctedEnglish, explanation, and suggestedNextReply strictly in English (never reply in Italian or any other language).
+Reply immediately in natural English (1 short sentence + 1 short question, max 25 words, in replyEnglish). Set hasMistake=true only for real mistakes or non-English words, and provide correctedEnglish + 1 brief tip in simple English (max 15 words, in explanation). Always provide suggestedNextReply in natural English (max 12 words).${
+      transLang ? ` Also provide replyTranslation of replyEnglish in ${transLang}.` : ''
     }`;
 
     const schemaProperties: Record<string, { type: Type }> = {
-      replyItalian: { type: Type.STRING },
+      replyEnglish: { type: Type.STRING },
       hasMistake: { type: Type.BOOLEAN },
-      correctedItalian: { type: Type.STRING },
+      correctedEnglish: { type: Type.STRING },
       explanation: { type: Type.STRING },
       suggestedNextReply: { type: Type.STRING },
     };
     const requiredFields = [
-      'replyItalian',
+      'replyEnglish',
       'hasMistake',
-      'correctedItalian',
+      'correctedEnglish',
       'explanation',
       'suggestedNextReply',
     ];
@@ -595,7 +613,7 @@ Reply immediately in natural Italian (1 short sentence + 1 short question, max 2
   }
 });
 
-// 2. Generate 5 Key Italian Phrases for the active conversation
+// 2. Generate 5 Key English Phrases for the active conversation
 app.post('/api/phrases', async (req, res) => {
   try {
     const { scenarioId, level, recentMessages } = req.body as {
@@ -610,15 +628,15 @@ app.post('/api/phrases', async (req, res) => {
 
     const contextLines = (recentMessages || [])
       .slice(-4)
-      .map((m) => `${m.sender === 'user' ? 'Learner' : 'Marco'}: ${String(m.text || '').slice(0, 300)}`)
+      .map((m) => `${m.sender === 'user' ? 'Learner' : 'Alex'}: ${String(m.text || '').slice(0, 300)}`)
       .join('\n');
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.1-flash-lite',
-      contents: `Generate 5 practical spoken Italian phrases to use in this conversation.\nScenario: ${scenarioInfo}\nLevel: ${levelInfo}\nRecent chat:\n${contextLines || 'Start'}`,
+      contents: `Generate 5 practical spoken English phrases to use in this conversation.\nScenario: ${scenarioInfo}\nLevel: ${levelInfo}\nRecent chat:\n${contextLines || 'Start'}`,
       config: {
         systemInstruction:
-          'You are a friendly native Italian tutor. Return exactly 5 useful spoken Italian phrases suited to the context and level, each with a brief meaning in simple Italian (meaning) and 1 short usage tip in simple Italian (usageNote).',
+          'You are a friendly native English tutor. Return exactly 5 useful spoken English phrases suited to the context and level, each with a brief meaning in simple English (meaning) and 1 short usage tip in simple English (usageNote).',
         thinkingConfig: { thinkingLevel: ThinkingLevel.MINIMAL },
         responseMimeType: 'application/json',
         responseSchema: {
@@ -626,25 +644,25 @@ app.post('/api/phrases', async (req, res) => {
           items: {
             type: Type.OBJECT,
             properties: {
-              italian: { type: Type.STRING },
+              english: { type: Type.STRING },
               meaning: { type: Type.STRING },
               usageNote: { type: Type.STRING },
             },
-            required: ['italian', 'meaning', 'usageNote'],
+            required: ['english', 'meaning', 'usageNote'],
           },
         },
       },
     });
 
     const items = JSON.parse((response.text ?? '[]').trim()) as Array<{
-      italian: string;
+      english: string;
       meaning: string;
       usageNote: string;
     }>;
 
     const phrases = items.slice(0, 5).map((item, idx) => ({
       id: `gen-${Date.now()}-${idx}`,
-      italian: item.italian,
+      english: item.english,
       meaning: item.meaning,
       usageNote: item.usageNote,
       memorized: false,
@@ -655,13 +673,13 @@ app.post('/api/phrases', async (req, res) => {
     console.error('Phrases error:', err);
     const { status, message } = formatServerError(
       err,
-      'Impossibile generare nuove frasi al momento. Riprova.'
+      'Could not generate new phrases right now. Please try again.'
     );
     return res.status(status).json({ error: message });
   }
 });
 
-// 3A. Progressive Streaming TTS (raw L16 PCM 24kHz mono in Italian)
+// 3A. Progressive Streaming TTS (raw L16 PCM 24kHz mono in English)
 app.post('/api/tts/stream', async (req, res) => {
   try {
     const { text, level, slow } = req.body as {
@@ -677,10 +695,10 @@ app.post('/api/tts/stream', async (req, res) => {
     const ai = getAiClient();
     const shouldSpeakSlow = Boolean(slow);
     const style = shouldSpeakSlow
-      ? 'Speak strictly in clear, warm standard Italian (it-IT) gently at a comfortable pace for a learner.'
+      ? 'Speak strictly in clear, warm standard American English (en-US) gently at a comfortable pace for a learner.'
       : level === 'beginner'
-      ? 'Speak strictly in clear, warm standard Italian (it-IT) at a natural, steady pace.'
-      : 'Friendly, articulate native Italian (it-IT) speaker at a natural conversational pace.';
+      ? 'Speak strictly in clear, warm standard American English (en-US) at a natural, steady pace.'
+      : 'Friendly, articulate native English (en-US) speaker at a natural conversational pace.';
 
     let ttsClientClosed = false;
     res.on('close', () => {
@@ -742,7 +760,7 @@ app.post('/api/tts/stream', async (req, res) => {
   }
 });
 
-// 3B. Unary Text-to-Speech (WAV fallback in Italian)
+// 3B. Unary Text-to-Speech (WAV fallback in English)
 app.post('/api/tts', async (req, res) => {
   try {
     const { text, level, slow } = req.body as {
@@ -758,10 +776,10 @@ app.post('/api/tts', async (req, res) => {
     const ai = getAiClient();
     const shouldSpeakSlow = Boolean(slow);
     const style = shouldSpeakSlow
-      ? 'Speak strictly in clear, warm standard Italian (it-IT) gently at a comfortable pace for a learner.'
+      ? 'Speak strictly in clear, warm standard American English (en-US) gently at a comfortable pace for a learner.'
       : level === 'beginner'
-      ? 'Speak strictly in clear, warm standard Italian (it-IT) at a natural, steady pace.'
-      : 'Friendly, articulate native Italian (it-IT) speaker at a natural conversational pace.';
+      ? 'Speak strictly in clear, warm standard American English (en-US) at a natural, steady pace.'
+      : 'Friendly, articulate native English (en-US) speaker at a natural conversational pace.';
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash-lite-tts',
@@ -828,7 +846,7 @@ app.post('/api/transcribe', async (req, res) => {
             },
           },
           {
-            text: 'Transcribe the spoken audio accurately in the exact language spoken (likely Italian or mixed with another language). Return ONLY the transcribed text without quotes or commentary. If the audio is silent or unintelligible, return an empty string.',
+            text: 'Transcribe the spoken audio accurately in the exact language spoken (likely English or mixed with another language). Return ONLY the transcribed text without quotes or commentary. If the audio is silent or unintelligible, return an empty string.',
           },
         ],
       },
@@ -837,12 +855,12 @@ app.post('/api/transcribe', async (req, res) => {
     return res.json({ text: (response.text ?? '').trim() });
   } catch (err: unknown) {
     console.error('Transcribe error:', err);
-    const { status, message } = formatServerError(err, 'Impossibile trascrivere la voce.');
+    const { status, message } = formatServerError(err, 'Could not transcribe voice.');
     return res.status(status).json({ error: message });
   }
 });
 
-// 5. On-demand Translation from Italian to any world language
+// 5. On-demand Translation from English to any world language
 app.post('/api/translate', async (req, res) => {
   try {
     const { text, targetLanguageName } = req.body as {
@@ -855,7 +873,7 @@ app.post('/api/translate', async (req, res) => {
     }
 
     const ai = getAiClient();
-    const systemInstruction = `Translate the user's Italian text accurately and naturally into ${targetLanguageName.slice(0, 80)}. Return ONLY the translated text with no quotes, labels, or commentary.`;
+    const systemInstruction = `Translate the user's English text accurately and naturally into ${targetLanguageName.slice(0, 80)}. Return ONLY the translated text with no quotes, labels, or commentary.`;
 
     const raceTimeout = <T,>(promise: Promise<T>, ms: number): Promise<T> => {
       let timer: NodeJS.Timeout;
