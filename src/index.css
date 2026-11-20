@@ -21,8 +21,8 @@
   font-family: var(--font-arabic);
 }
 
-/* Subtle Mediterranean slate-azure conversation wallpaper */
-.italian-wallpaper {
+/* Subtle slate-azure conversation wallpaper */
+.english-wallpaper {
   background-color: #f4f7fb;
   background-image:
     radial-gradient(rgba(30, 58, 138, 0.045) 1px, transparent 1px),

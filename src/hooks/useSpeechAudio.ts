@@ -97,7 +97,7 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
 
   const fallbackSpeak = useCallback((id: string, text: string, slow: boolean) => {
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
-      setAudioError('La riproduzione vocale non è supportata su questo browser.');
+      setAudioError('Voice playback is not supported on this browser.');
       return;
     }
     if (speechTimerRef.current) {
@@ -107,7 +107,7 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
 
     const startSpeech = () => {
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'it-IT';
+      utterance.lang = 'en-US';
       utterance.rate = slow ? 0.78 : 0.96;
       utterance.onstart = () => setPlayingId(id);
       utterance.onend = () => setPlayingId((curr) => (curr === id ? null : curr));
@@ -115,7 +115,7 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
         setPlayingId((curr) => (curr === id ? null : curr));
         const errCode = (event as SpeechSynthesisErrorEvent | undefined)?.error;
         if (errCode !== 'interrupted' && errCode !== 'canceled' && errCode !== 'not-allowed') {
-          setAudioError("Impossibile riprodurre l'audio al momento.");
+          setAudioError('Unable to play audio right now.');
         }
       };
       try {
@@ -185,7 +185,7 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
         return;
       }
 
-      // 2. Zero-data instant local Italian speech when liteMode is active
+      // 2. Zero-data instant local English speech when liteMode is active
       if (liteMode) {
         fallbackSpeak(id, text, useSlow || level === 'beginner');
         return;

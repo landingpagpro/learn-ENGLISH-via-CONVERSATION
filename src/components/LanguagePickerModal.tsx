@@ -64,13 +64,13 @@ export const LanguagePickerModal: React.FC<LanguagePickerModalProps> = ({
           <div className="flex items-center gap-2">
             <Globe className="w-5 h-5 text-[#1E40AF]" />
             <h3 className="text-[15px] font-bold text-[#0F172A]">
-              Scegli lingua di traduzione
+              Choose translation language
             </h3>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Chiudi"
+            aria-label="Close"
             className="min-w-[44px] min-h-[44px] -mr-2 flex items-center justify-center rounded-lg text-[#475569] hover:bg-black/5 cursor-pointer"
           >
             <X className="w-5 h-5" />
@@ -86,7 +86,7 @@ export const LanguagePickerModal: React.FC<LanguagePickerModalProps> = ({
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Cerca una lingua (Arabo, Inglese, Francese, Spagnolo)"
+              placeholder="Search any language (Arabic, French, Italian, Spanish)"
               className="w-full min-h-[44px] bg-[#F8FAFC] border border-slate-200 rounded-lg pl-9 pr-3 py-2 text-sm text-[#0F172A] placeholder:text-[#64748B] focus:outline-none focus:ring-2 focus:ring-[#1E40AF]/30 focus:bg-white"
             />
           </div>
@@ -102,10 +102,10 @@ export const LanguagePickerModal: React.FC<LanguagePickerModalProps> = ({
             >
               <div>
                 <p className="text-sm font-semibold text-[#1E40AF]">
-                  Traduci in: &ldquo;{trimmedQuery}&rdquo;
+                  Translate to: &ldquo;{trimmedQuery}&rdquo;
                 </p>
                 <p className="text-xs text-[#475569]">
-                  Usa questa lingua o dialetto personalizzato
+                  Use this custom language or dialect
                 </p>
               </div>
               <Globe className="w-4 h-4 text-[#1E40AF] shrink-0" />
