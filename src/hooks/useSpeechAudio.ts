@@ -37,6 +37,21 @@ function pcmBytesToWavBlob(pcmBytes: Uint8Array, sampleRate = 24000): Blob {
   return new Blob([header, pcmBytes.buffer as ArrayBuffer], { type: 'audio/wav' });
 }
 
+function pickEnglishVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
+  if (!voices.length) return null;
+  const isEnUs = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().replace('_', '-') === 'en-us';
+  const isEn = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().startsWith('en');
+
+  return (
+    voices.find((v) => isEnUs(v) && /google|samsung|samantha|natural|aria|jenny|guy|alex/i.test(v.name)) ||
+    voices.find((v) => isEnUs(v)) ||
+    voices.find((v) => isEn(v) && /google|samsung|natural|english/i.test(v.name)) ||
+    voices.find((v) => isEn(v)) ||
+    voices.find((v) => /english/i.test(v.name)) ||
+    null
+  );
+}
+
 export function useSpeechAudio(onSlowNetwork?: () => void) {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
@@ -48,6 +63,7 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
   const activeSourcesRef = useRef<AudioBufferSourceNode[]>([]);
   const cacheRef = useRef<Map<string, string>>(new Map());
   const speechTimerRef = useRef<number | null>(null);
+  const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
 
   const stop = useCallback(() => {
     if (speechTimerRef.current) {
@@ -82,6 +98,26 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
   }, []);
 
   useEffect(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      const loadVoices = () => {
+        voicesRef.current = window.speechSynthesis.getVoices();
+      };
+      loadVoices();
+      window.speechSynthesis.addEventListener?.('voiceschanged', loadVoices);
+      return () => {
+        window.speechSynthesis.removeEventListener?.('voiceschanged', loadVoices);
+        stop();
+        if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+          audioCtxRef.current.close().catch(() => {});
+        }
+        cacheRef.current.forEach((url) => {
+          if (url.startsWith('blob:')) {
+            URL.revokeObjectURL(url);
+          }
+        });
+      };
+    }
+
     return () => {
       stop();
       if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
@@ -106,8 +142,19 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
     }
 
     const startSpeech = () => {
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        voicesRef.current = voices;
+      }
+      const englishVoice = pickEnglishVoice(voicesRef.current);
+
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-US';
+      if (englishVoice) {
+        utterance.voice = englishVoice;
+        utterance.lang = englishVoice.lang;
+      } else {
+        utterance.lang = 'en-US';
+      }
       utterance.rate = slow ? 0.78 : 0.96;
       utterance.onstart = () => setPlayingId(id);
       utterance.onend = () => setPlayingId((curr) => (curr === id ? null : curr));
@@ -185,13 +232,13 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
         return;
       }
 
-      // 2. Zero-data instant local English speech when liteMode is active
+      // 2. Local English browser speech when liteMode is active
       if (liteMode) {
         fallbackSpeak(id, text, useSlow || level === 'beginner');
         return;
       }
 
-      // 3. Progressive streaming PCM via AudioContext with fast 1.2s slow-connection timeout
+      // 3. Progressive streaming PCM via AudioContext with 2.8s first-byte timeout
       const controller = new AbortController();
       abortRef.current = controller;
       setLoadingId(id);
@@ -199,7 +246,7 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
       let firstByteTimer: number | null = window.setTimeout(() => {
         timedOut = true;
         controller.abort();
-      }, 1200);
+      }, 2800);
 
       try {
         const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -245,7 +292,7 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
           let readTimer: number | null = window.setTimeout(() => {
             timedOut = true;
             controller.abort();
-          }, 3500);
+          }, 4000);
           const { value, done } = await reader.read().finally(() => {
             if (readTimer !== null) {
               window.clearTimeout(readTimer);

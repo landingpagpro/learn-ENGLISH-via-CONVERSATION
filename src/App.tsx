@@ -13,7 +13,7 @@ import { ChatMessage, ConversationThread, ProficiencyLevel, ScenarioId } from '.
 
 const PHRASES_KEY = 'le_en_phrases_v1';
 const AUTOSPEAK_KEY = 'le_en_autospeak_v1';
-const LITEMODE_KEY = 'le_en_litemode_v1';
+const LITEMODE_KEY = 'le_en_litemode_v2';
 const TRANSLANG_KEY = 'le_en_trans_lang_v1';
 const MAX_MESSAGES_PER_THREAD = 30;
 
@@ -75,6 +75,7 @@ export default function App() {
         'le_it_autospeak_v1',
         'le_it_litemode_v1',
         'le_it_trans_lang_v1',
+        'le_en_litemode_v1',
       ].forEach((k) => localStorage.removeItem(k));
     } catch {
       // Ignore storage errors
@@ -133,7 +134,7 @@ export default function App() {
     } catch {
       // Ignore detection errors
     }
-    return true;
+    return false;
   });
 
   const [selectedLanguage, setSelectedLanguage] = useState<TranslationLanguage | null>(() => {

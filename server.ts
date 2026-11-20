@@ -240,6 +240,7 @@ app.post('/api/chat/stream', async (req, res) => {
     const systemInstruction = `You are Alex in "Learn English via Conversation".
 Context: ${scenarioInfo}
 Level: ${levelInfo}
+ALWAYS write your reply, correction, explanation, and hint strictly in English (never reply in Italian or any other language).
 Reply immediately with 1 short sentence in natural English + 1 short question (max 25 words total, no [REPLY] tag). Then append only:
 [MISTAKE]
 YES or NO (omit [CORRECTED] and [EXPLAIN] if NO)
@@ -435,6 +436,7 @@ app.post('/api/chat', async (req, res) => {
     const systemInstruction = `You are Alex, a friendly English conversation partner in "Learn English via Conversation".
 Context: ${scenarioInfo}
 Level: ${levelInfo}
+ALWAYS write replyEnglish, correctedEnglish, explanation, and suggestedNextReply strictly in English (never reply in Italian or any other language).
 Reply immediately in natural English (1 short sentence + 1 short question, max 25 words, in replyEnglish). Set hasMistake=true only for real mistakes or non-English words, and provide correctedEnglish + 1 brief tip in simple English (max 15 words, in explanation). Always provide suggestedNextReply in natural English (max 12 words).${
       transLang ? ` Also provide replyTranslation of replyEnglish in ${transLang}.` : ''
     }`;
@@ -607,10 +609,10 @@ app.post('/api/tts/stream', async (req, res) => {
     const ai = getAiClient();
     const shouldSpeakSlow = Boolean(slow);
     const style = shouldSpeakSlow
-      ? 'Speak clear, warm standard English gently at a comfortable pace for a learner.'
+      ? 'Speak strictly in clear, warm standard American English (en-US) gently at a comfortable pace for a learner.'
       : level === 'beginner'
-      ? 'Speak clear, warm standard English at a natural, steady pace.'
-      : 'Friendly, articulate native English speaker at a natural conversational pace.';
+      ? 'Speak strictly in clear, warm standard American English (en-US) at a natural, steady pace.'
+      : 'Friendly, articulate native American English (en-US) speaker at a natural conversational pace.';
 
     let ttsClientClosed = false;
     res.on('close', () => {
@@ -688,10 +690,10 @@ app.post('/api/tts', async (req, res) => {
     const ai = getAiClient();
     const shouldSpeakSlow = Boolean(slow);
     const style = shouldSpeakSlow
-      ? 'Speak clear, warm standard English gently at a comfortable pace for a learner.'
+      ? 'Speak strictly in clear, warm standard American English (en-US) gently at a comfortable pace for a learner.'
       : level === 'beginner'
-      ? 'Speak clear, warm standard English at a natural, steady pace.'
-      : 'Friendly, articulate native English speaker at a natural conversational pace.';
+      ? 'Speak strictly in clear, warm standard American English (en-US) at a natural, steady pace.'
+      : 'Friendly, articulate native American English (en-US) speaker at a natural conversational pace.';
 
     const response = await ai.models.generateContent({
       model: 'gemini-3.8-flash-lite-tts',
