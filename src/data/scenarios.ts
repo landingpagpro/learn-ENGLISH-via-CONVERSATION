@@ -1,5 +1,5 @@
 import { KeyPhrase, LevelMeta, ProficiencyLevel, ScenarioId, ScenarioMeta } from '../types';
-import appLogo from '../assets/images/impara_italiano_parlando_logo_1795248459916.jpg';
+import appLogo from '../assets/images/italiano_parlando_emerald_logo_1795274061693.jpg';
 
 export const APP_LOGO_URL = appLogo;
 
@@ -27,24 +27,24 @@ export const SCENARIOS: ScenarioMeta[] = [
     title: "Impara l'Italiano Parlando",
     subtitle: 'Dialogo libero e pratica quotidiana',
     roleDescription: 'Fai pratica con conversazioni naturali in italiano su qualsiasi argomento.',
-    accentBg: 'bg-blue-50',
-    accentText: 'text-[#1E40AF]',
+    accentBg: 'bg-[#E8F4F0]',
+    accentText: 'text-[#0F5E4B]',
   },
   {
     id: 'airport',
     title: 'In Aeroporto',
     subtitle: 'Check-in, controlli e imbarco',
     roleDescription: 'Esercitati al banco check-in, ai controlli di sicurezza e al gate in italiano.',
-    accentBg: 'bg-sky-50',
-    accentText: 'text-sky-700',
+    accentBg: 'bg-teal-50',
+    accentText: 'text-teal-700',
   },
   {
     id: 'work',
     title: 'Al Lavoro',
     subtitle: 'Riunioni e aggiornamenti',
     roleDescription: 'Parla di progetti, scadenze e lavoro di squadra con colleghi italiani.',
-    accentBg: 'bg-indigo-50',
-    accentText: 'text-indigo-700',
+    accentBg: 'bg-emerald-50',
+    accentText: 'text-emerald-800',
   },
   {
     id: 'doctor',

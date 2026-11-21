@@ -188,15 +188,15 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   };
 
   return (
-    <div className="bg-white border-t border-slate-200 px-2.5 sm:px-4 py-2 pb-safe shrink-0">
+    <div className="bg-white/95 backdrop-blur-md border-t border-[#DCE4DD] px-2.5 sm:px-4 py-2 pb-safe shrink-0">
       {/* Inline Hint Drawer */}
       {showHint && suggestedHint && (
-        <div className="mb-2 bg-[#F8FAFC] border border-[#1E40AF]/15 rounded-xl px-3 py-2 flex items-center justify-between gap-2 shadow-2xs">
+        <div className="mb-2 bg-[#F4F7F5] border border-[#0F5E4B]/20 rounded-2xl px-3.5 py-2.5 flex items-center justify-between gap-2 shadow-[0_1px_2px_rgba(17,28,24,0.05)]">
           <div className="min-w-0">
-            <span className="text-[11px] font-semibold text-[#1E40AF] block">
+            <span className="text-[11px] font-semibold text-[#0F5E4B] block">
               Risposta suggerita:
             </span>
-            <p className="text-sm text-[#0F172A] leading-snug break-words">
+            <p className="text-sm text-[#111C18] leading-snug break-words">
               {suggestedHint}
             </p>
           </div>
@@ -207,7 +207,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
               setShowHint(false);
               inputRef.current?.focus();
             }}
-            className="px-3 py-1.5 rounded-lg bg-[#EFF6FF] text-[#1E40AF] text-xs font-semibold whitespace-nowrap shrink-0 cursor-pointer hover:bg-[#DBEAFE]"
+            className="px-3 py-1.5 rounded-xl bg-[#E8F4F0] text-[#0F5E4B] text-xs font-semibold whitespace-nowrap shrink-0 cursor-pointer hover:bg-[#D1EAE2]"
           >
             Usa
           </button>
@@ -216,7 +216,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
 
       {/* Microphone Error Banner */}
       {micError && (
-        <div className="mb-2 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl px-3 py-1.5 text-xs flex items-center justify-between gap-2">
+        <div className="mb-2 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl px-3 py-1.5 text-xs flex items-center justify-between gap-2">
           <span>{micError}</span>
           <button
             type="button"
@@ -230,22 +230,22 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
 
       {/* Active Voice Recording Bar vs Standard Composer */}
       {isRecording ? (
-        <div className="flex items-center justify-between gap-2 bg-[#F8FAFC] rounded-xl px-3 py-1.5 min-h-[48px] border border-rose-300">
+        <div className="flex items-center justify-between gap-2 bg-[#F4F7F5] rounded-2xl px-3 py-1.5 min-h-[48px] border border-rose-300">
           <button
             type="button"
             onClick={cancelRecording}
             aria-label="Annulla registrazione"
-            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
           >
             <Trash2 className="w-5 h-5" />
           </button>
 
           <div className="flex items-center gap-2 flex-1 justify-center">
             <Mic className="w-4 h-4 text-rose-600 shrink-0" />
-            <span className="text-sm font-semibold text-[#0F172A] tabular-nums">
+            <span className="text-sm font-semibold text-[#111C18] tabular-nums">
               {formatTimer(recordingSeconds)}
             </span>
-            <span className="text-xs text-[#475569] whitespace-nowrap">
+            <span className="text-xs text-[#4A5C55] whitespace-nowrap">
               Parla in italiano
             </span>
           </div>
@@ -253,7 +253,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
           <button
             type="button"
             onClick={finishAndTranscribe}
-            className="min-h-[44px] px-4 rounded-lg bg-[#1E40AF] text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-[#1E3A8A] active:scale-[0.98] transition-all cursor-pointer whitespace-nowrap"
+            className="min-h-[44px] px-4 rounded-xl bg-[#0F5E4B] text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-[#0A4638] active:scale-[0.98] transition-all cursor-pointer whitespace-nowrap"
           >
             <Send className="w-3.5 h-3.5" />
             <span>Invia</span>
@@ -267,10 +267,10 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
               onClick={() => setShowHint((v) => !v)}
               title="Risposta suggerita"
               aria-label="Risposta suggerita"
-              className={`min-w-[44px] min-h-[44px] rounded-xl flex items-center justify-center transition-colors shrink-0 cursor-pointer ${
+              className={`min-w-[44px] min-h-[44px] rounded-2xl flex items-center justify-center transition-colors shrink-0 cursor-pointer ${
                 showHint
-                  ? 'bg-[#EFF6FF] text-[#1E40AF]'
-                  : 'text-[#475569] hover:bg-black/5'
+                  ? 'bg-[#E8F4F0] text-[#0F5E4B]'
+                  : 'text-[#4A5C55] hover:bg-[#EFF4F0]'
               }`}
             >
               <Lightbulb className="w-5 h-5" />
@@ -290,7 +290,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
                   ? 'Invio voce'
                   : 'Scrivi in italiano'
               }
-              className="w-full min-h-[44px] bg-[#F8FAFC] rounded-xl px-4 py-2.5 text-[15px] text-[#0F172A] placeholder:text-[#64748B] border border-slate-200 focus:outline-none focus:border-[#1E40AF] focus:bg-white"
+              className="w-full min-h-[44px] bg-[#F4F7F5] rounded-2xl px-4 py-2.5 text-[15px] text-[#111C18] placeholder:text-[#64766E] border border-[#DCE4DD] focus:outline-none focus:border-[#0F5E4B] focus:bg-white transition-colors"
             />
           </div>
 
@@ -301,7 +301,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             disabled={disabled || isTranscribing}
             title="Parla con il microfono"
             aria-label="Parla con il microfono"
-            className="min-w-[44px] min-h-[44px] rounded-xl bg-[#F8FAFC] border border-slate-200 text-[#1E40AF] hover:bg-[#EFF6FF] active:scale-[0.96] disabled:opacity-50 flex items-center justify-center transition-all shrink-0 cursor-pointer"
+            className="min-w-[44px] min-h-[44px] rounded-2xl bg-[#F4F7F5] border border-[#DCE4DD] text-[#0F5E4B] hover:bg-[#E8F4F0] active:scale-[0.96] disabled:opacity-50 flex items-center justify-center transition-all shrink-0 cursor-pointer"
           >
             <Mic className={`w-5 h-5 ${isTranscribing ? 'animate-pulse' : ''}`} />
           </button>
@@ -312,7 +312,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             disabled={!inputText.trim() || disabled || isTranscribing}
             title="Invia"
             aria-label="Invia messaggio"
-            className="min-w-[44px] min-h-[44px] rounded-xl bg-[#1E40AF] text-white hover:bg-[#1E3A8A] active:scale-[0.96] disabled:bg-[#CBD5E1] disabled:cursor-not-allowed flex items-center justify-center transition-all shrink-0 cursor-pointer"
+            className="min-w-[44px] min-h-[44px] rounded-2xl bg-[#0F5E4B] text-white hover:bg-[#0A4638] active:scale-[0.96] disabled:bg-[#CBD5CE] disabled:cursor-not-allowed flex items-center justify-center transition-all shrink-0 cursor-pointer shadow-[0_1px_2px_rgba(15,94,75,0.2)]"
           >
             <Send className="w-5 h-5" />
           </button>

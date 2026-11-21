@@ -790,7 +790,7 @@ export default function App() {
   const memorizedCount = currentThread.phrases.filter((p) => p.memorized).length;
 
   return (
-    <div className="h-dvh w-full overflow-hidden flex bg-[#EEF2F6]">
+    <div className="h-dvh w-full overflow-hidden flex bg-[#EDF2EE]">
       {/* Left Sidebar: Topics & 3 Levels (Always visible on md+, toggled on mobile) */}
       <div
         className={`${
@@ -838,11 +838,11 @@ export default function App() {
         />
 
         {/* Mobile Quick Level & Topic Strip */}
-        <div className="md:hidden bg-white/95 backdrop-blur-xs border-b border-slate-200 px-3 py-1.5 flex items-center justify-between gap-2 shrink-0">
+        <div className="md:hidden bg-white/95 backdrop-blur-md border-b border-[#DCE4DD] px-3 py-1.5 flex items-center justify-between gap-2 shrink-0">
           <button
             type="button"
             onClick={() => setMobileView('list')}
-            className="text-xs font-semibold text-[#1E40AF] whitespace-nowrap cursor-pointer py-1 shrink-0"
+            className="text-xs font-semibold text-[#0F5E4B] whitespace-nowrap cursor-pointer py-1 shrink-0"
           >
             {activeScenario === 'conversation'
               ? 'Argomenti'
@@ -855,16 +855,16 @@ export default function App() {
               : 'Amici'}{' '}
             ▾
           </button>
-          <div className="flex items-center gap-1 bg-[#E2E8F0] p-0.5 rounded-lg shrink-0">
+          <div className="flex items-center gap-1 bg-[#E4ECE6] p-0.5 rounded-xl shrink-0">
             {LEVELS.map((lvl) => (
               <button
                 key={lvl.id}
                 type="button"
                 onClick={() => handleSelectLevel(lvl.id)}
-                className={`px-2 py-1 rounded-md text-[11px] font-semibold transition-colors cursor-pointer ${
+                className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
                   lvl.id === activeLevel
-                    ? 'bg-white text-[#1E40AF] shadow-2xs'
-                    : 'text-[#475569]'
+                    ? 'bg-white text-[#0F5E4B] shadow-[0_1px_2px_rgba(17,28,24,0.06)]'
+                    : 'text-[#4A5C55]'
                 }`}
               >
                 {lvl.label}
@@ -877,8 +877,8 @@ export default function App() {
         <div className="flex-1 overflow-y-auto chat-scroll px-3 sm:px-6 py-4 space-y-3">
           {/* Topic Context Banner */}
           <div className="flex justify-center mb-2">
-            <div className="bg-white/95 border border-slate-200 text-[#475569] rounded-xl px-3.5 py-2 text-xs text-center max-w-md shadow-2xs leading-relaxed">
-              <span className="font-semibold text-[#0F172A]">
+            <div className="bg-white/95 border border-[#DCE4DD] text-[#4A5C55] rounded-2xl px-4 py-2 text-xs text-center max-w-md shadow-[0_1px_2px_rgba(17,28,24,0.04)] leading-relaxed">
+              <span className="font-semibold text-[#111C18]">
                 {activeScenarioMeta.title} · {activeLevelMeta.label}
               </span>
               <span className="mx-1.5" aria-hidden="true">
@@ -893,10 +893,10 @@ export default function App() {
           {/* Clean Empty State with App Logo */}
           {currentThread.messages.length === 0 && !isTyping && (
             <div className="flex justify-center pt-6 pb-2">
-              <div className="bg-white/95 border border-slate-200 rounded-xl p-5 max-w-sm w-full text-center shadow-xs">
-                <div className="flex justify-center mb-3">
+              <div className="bg-white/95 border border-[#DCE4DD] rounded-2xl p-6 max-w-sm w-full text-center shadow-[0_4px_16px_rgba(17,28,24,0.06)]">
+                <div className="flex justify-center mb-3.5">
                   {logoError ? (
-                    <div className="w-20 h-20 rounded-xl bg-[#1E40AF] text-white font-bold text-lg flex items-center justify-center border border-[#1E40AF]/20">
+                    <div className="w-20 h-20 rounded-2xl bg-[#0F5E4B] text-white font-bold text-lg flex items-center justify-center border border-[#0F5E4B]/20 shadow-[0_2px_8px_rgba(15,94,75,0.2)]">
                       IT
                     </div>
                   ) : (
@@ -905,20 +905,20 @@ export default function App() {
                       alt="Impara l'Italiano Parlando"
                       referrerPolicy="no-referrer"
                       onError={() => setLogoError(true)}
-                      className="w-20 h-20 rounded-xl object-cover border border-slate-200 bg-white"
+                      className="w-20 h-20 rounded-2xl object-cover border border-[#DCE4DD] bg-white shadow-[0_2px_8px_rgba(17,28,24,0.08)]"
                     />
                   )}
                 </div>
-                <h3 className="text-[16px] font-bold text-[#0F172A] mb-1">
+                <h3 className="text-[16px] font-bold text-[#111C18] mb-1">
                   {activeScenarioMeta.title}
                 </h3>
-                <p className="text-xs text-[#64748B] leading-relaxed mb-4">
+                <p className="text-xs text-[#64766E] leading-relaxed mb-4">
                   {activeScenarioMeta.roleDescription}
                 </p>
                 <button
                   type="button"
                   onClick={() => handleSendMessage('Ciao! Vorrei fare pratica con il mio italiano.')}
-                  className="w-full min-h-[42px] px-4 py-2 rounded-lg bg-[#1E40AF] hover:bg-[#1E3A8A] text-white text-xs font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                  className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#0F5E4B] hover:bg-[#0A4638] text-white text-xs font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-[0_2px_6px_rgba(15,94,75,0.22)]"
                 >
                   <MessageCircle className="w-4 h-4" />
                   <span>Inizia la conversazione</span>
@@ -1000,7 +1000,7 @@ export default function App() {
       </main>
 
       {/* Right Panel on Desktop (xl+): 5 Key Phrases */}
-      <aside className="hidden xl:flex xl:w-[350px] shrink-0 h-full border-l border-slate-200">
+      <aside className="hidden xl:flex xl:w-[350px] shrink-0 h-full border-l border-[#DCE4DD]">
         <div className="w-full h-full">
           <PhrasesPanel
             phrases={currentThread.phrases}
@@ -1019,16 +1019,16 @@ export default function App() {
       {/* Mobile / Tablet Bottom Sheet Drawer for 5 Key Phrases */}
       {phrasesDrawerOpen && (
         <div
-          className="xl:hidden fixed inset-0 z-50 flex items-end sm:items-center sm:justify-end bg-[#0F172A]/45 backdrop-blur-[2px]"
+          className="xl:hidden fixed inset-0 z-50 flex items-end sm:items-center sm:justify-end bg-[#111C18]/45 backdrop-blur-[2px]"
           onClick={() => setPhrasesDrawerOpen(false)}
         >
           <div
-            className="w-full sm:w-[400px] h-[84dvh] sm:h-full bg-[#F8FAFC] rounded-t-2xl sm:rounded-none overflow-hidden shadow-2xl flex flex-col"
+            className="w-full sm:w-[400px] h-[84dvh] sm:h-full bg-[#F8FAF8] rounded-t-2xl sm:rounded-none overflow-hidden shadow-2xl flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Mobile Sheet Drag Handle */}
             <div className="sm:hidden pt-2.5 pb-1 bg-white flex justify-center shrink-0">
-              <div className="w-10 h-1 rounded-full bg-slate-900/20" />
+              <div className="w-10 h-1 rounded-full bg-[#111C18]/20" />
             </div>
             <div className="flex-1 min-h-0">
               <PhrasesPanel
