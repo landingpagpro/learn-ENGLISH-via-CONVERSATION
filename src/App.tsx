@@ -13,7 +13,6 @@ import {
   generateKeylessChatReply,
   getNextFreeKeylessPhrases,
   translateKeylessText,
-  waitAndTranslateWithPollinations,
 } from './utils/freeKeylessTutor';
 import {
   ChatMessage,
@@ -22,19 +21,18 @@ import {
   ScenarioId,
 } from './types';
 
-const PHRASES_KEY = 'le_it_parlando_phrases_v3';
-const AUTOSPEAK_KEY = 'le_it_parlando_autospeak_v3';
-const LITEMODE_KEY = 'le_it_parlando_litemode_v4';
-const TRANSLANG_KEY = 'le_it_parlando_trans_lang_v3';
-const SAVED_LINKS_KEY = 'le_it_parlando_saved_links_v1';
+const PHRASES_KEY = 'le_en_talking_phrases_v1';
+const AUTOSPEAK_KEY = 'le_en_talking_autospeak_v1';
+const TRANSLANG_KEY = 'le_en_talking_trans_lang_v1';
+const SAVED_LINKS_KEY = 'le_en_talking_saved_links_v1';
 const MAX_MESSAGES_PER_THREAD = 30;
 
 const SHORT_SCENARIOS: Record<ScenarioId, string> = {
-  conversation: 'Argomenti',
-  airport: 'Aeroporto',
-  work: 'Lavoro',
-  doctor: 'Medico',
-  meeting: 'Persone',
+  conversation: 'Topics',
+  airport: 'Airport',
+  work: 'Work',
+  doctor: 'Doctor',
+  meeting: 'People',
 };
 
 function persistActiveHostLinks(serverLinks?: { freeUrl?: string | null; domainUrl?: string | null }) {
@@ -73,10 +71,10 @@ function persistActiveHostLinks(serverLinks?: { freeUrl?: string | null; domainU
 
 function formatTimeNow(): string {
   const now = new Date();
-  return now.toLocaleTimeString('it-IT', {
+  return now.toLocaleTimeString('en-US', {
     hour: '2-digit',
     minute: '2-digit',
-    hour12: false,
+    hour12: true,
   });
 }
 
@@ -89,9 +87,9 @@ function createEmptyThread(scenarioId: ScenarioId, level: ProficiencyLevel): Con
 }
 
 interface ChatPayload {
-  replyItalian?: string;
+  replyEnglish?: string;
   hasMistake?: boolean;
-  correctedItalian?: string;
+  correctedEnglish?: string;
   explanation?: string;
   replyTranslation?: string;
   suggestedNextReply?: string;
@@ -103,7 +101,7 @@ export default function App() {
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('chat');
   const [phrasesDrawerOpen, setPhrasesDrawerOpen] = useState(false);
 
-  // Clear legacy storage keys on startup, auto-save free/domain links & keep Render instance warm
+  // Clear legacy storage keys on startup, auto-save active links & keep server instance warm
   useEffect(() => {
     try {
       [
@@ -133,15 +131,11 @@ export default function App() {
         'le_it_conv_autospeak_v2',
         'le_it_conv_litemode_v2',
         'le_it_conv_trans_lang_v2',
-        'le_en_phrases_v1',
-        'le_en_autospeak_v1',
-        'le_en_litemode_v1',
-        'le_en_litemode_v2',
-        'le_en_trans_lang_v1',
-        'le_en_conv_phrases_v2',
-        'le_en_conv_autospeak_v2',
-        'le_en_conv_litemode_v2',
-        'le_en_conv_trans_lang_v2',
+        'le_it_parlando_phrases_v3',
+        'le_it_parlando_autospeak_v3',
+        'le_it_parlando_mode_v5',
+        'le_it_parlando_trans_lang_v3',
+        'le_it_parlando_saved_links_v1',
       ].forEach((k) => localStorage.removeItem(k));
     } catch {
       // Ignore storage errors
@@ -166,7 +160,7 @@ export default function App() {
     return () => window.clearInterval(warmTimer);
   }, []);
 
-  // Keep conversations ephemeral in session memory; restore memorized Italian phrases per scenario/level
+  // Keep conversations ephemeral in session memory; restore memorized English phrases per scenario/level
   const [threads, setThreads] = useState<Record<string, ConversationThread>>(() => {
     try {
       const savedPhrases = localStorage.getItem(PHRASES_KEY);
@@ -177,15 +171,6 @@ export default function App() {
           const parts = key.split(':');
           if (parts.length === 2) {
             const [sc, lv] = parts as [ScenarioId, ProficiencyLevel];
-            if (INITIAL_PHRASES[sc]?.[lv] && Array.isArray(phrases)) {
-              restored[`${sc}:${lv}`] = {
-                messages: [],
-                phrases,
-                lastUpdated: Date.now(),
-              };
-            }
-          } else if (parts.length === 3 && parts[0] === 'italian') {
-            const [, sc, lv] = parts as [string, ScenarioId, ProficiencyLevel];
             if (INITIAL_PHRASES[sc]?.[lv] && Array.isArray(phrases)) {
               restored[`${sc}:${lv}`] = {
                 messages: [],
@@ -215,15 +200,6 @@ export default function App() {
       return true;
     }
   });
-  const [liteMode, setLiteMode] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem(LITEMODE_KEY);
-      if (saved !== null) return saved === 'true';
-    } catch {
-      // Ignore detection errors
-    }
-    return true;
-  });
 
   const [selectedLanguage, setSelectedLanguage] = useState<TranslationLanguage | null>(() => {
     try {
@@ -247,7 +223,7 @@ export default function App() {
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      setChatError((prev) => (prev?.includes('offline') ? null : prev));
+      setChatError((prev) => (prev?.toLowerCase().includes('offline') ? null : prev));
     };
     const handleOffline = () => {
       setIsOnline(false);
@@ -261,8 +237,6 @@ export default function App() {
   }, []);
 
   const autoSpeakRef = useRef(autoSpeak);
-  const liteModeRef = useRef(liteMode);
-  const cloudCooldownUntilRef = useRef<number>(0);
   const selectedLangRef = useRef<TranslationLanguage | null>(selectedLanguage);
 
   useEffect(() => {
@@ -287,24 +261,8 @@ export default function App() {
     }
   }, [autoSpeak]);
 
-  useEffect(() => {
-    liteModeRef.current = liteMode;
-    try {
-      localStorage.setItem(LITEMODE_KEY, String(liteMode));
-    } catch {
-      // Ignore storage errors
-    }
-  }, [liteMode]);
-
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const { loadingId, playingId, audioError, play: rawPlay, stop, unlockAudio } = useSpeechAudio();
-
-  const play = useCallback(
-    (opts: { id: string; text: string; level: ProficiencyLevel; slow?: boolean }) => {
-      return rawPlay({ ...opts, liteMode: liteModeRef.current });
-    },
-    [rawPlay]
-  );
+  const { loadingId, playingId, audioError, play, stop, unlockAudio } = useSpeechAudio();
 
   const threadKey = `${activeScenario}:${activeLevel}`;
 
@@ -412,39 +370,48 @@ export default function App() {
       let replyCompleteReceived = false;
       let hardStopped = false;
 
-      const runAutomaticFreeFallback = async () => {
-        if (winnerLocked) return;
-        const result = await generateKeylessChatReply({
-          scenarioId: activeScenario,
-          level: activeLevel,
-          history: historyForRequest.slice(-4).map((m) => ({
-            sender: m.sender,
-            text: m.text,
-          })),
-          userMessage: text,
-          targetLanguageName: selectedLangRef.current?.name,
-        });
-        winnerLocked = true;
-        setIsTyping(false);
-        if (result.replyItalian && autoSpeakRef.current && !autoSpoken) {
-          autoSpoken = true;
-          play({
-            id: `msg-${replyMsgId}`,
-            text: result.replyItalian,
+      const streamController = new AbortController();
+      const fallbackController = new AbortController();
+      let freeFallbackPromise: Promise<void> | null = null;
+
+      const runAutomaticFreeFallback = () => {
+        if (freeFallbackPromise) return freeFallbackPromise;
+        freeFallbackPromise = (async () => {
+          if (winnerLocked) return;
+          const result = await generateKeylessChatReply({
+            scenarioId: activeScenario,
             level: activeLevel,
-            slow: false,
+            history: historyForRequest.slice(-4).map((m) => ({
+              sender: m.sender,
+              text: m.text,
+            })),
+            userMessage: text,
+            targetLanguageName: selectedLangRef.current?.name,
           });
-        }
+          if (winnerLocked) return;
+          winnerLocked = true;
+          streamController.abort();
+          fallbackController.abort();
+          setIsTyping(false);
+          if (result.replyEnglish && autoSpeakRef.current && !autoSpoken) {
+            autoSpoken = true;
+            play({
+              id: `msg-${replyMsgId}`,
+              text: result.replyEnglish,
+              level: activeLevel,
+              slow: false,
+            });
+          }
         setThreads((prev) => {
           const latest = prev[threadKey] || currentThread;
           const langCode = selectedLangRef.current?.code;
           const hasPartialReply = latest.messages.some((m) => m.id === replyMsgId);
           let updatedMessages: ChatMessage[] = latest.messages.map((m) => {
-            if (m.id === userMsgId && result.hasMistake && result.correctedItalian) {
+            if (m.id === userMsgId && result.hasMistake && result.correctedEnglish) {
               return {
                 ...m,
                 correction: {
-                  correctedItalian: result.correctedItalian,
+                  correctedEnglish: result.correctedEnglish,
                   explanation: result.explanation || '',
                 },
               };
@@ -452,7 +419,7 @@ export default function App() {
             if (m.id === replyMsgId) {
               return {
                 ...m,
-                text: result.replyItalian,
+                text: result.replyEnglish,
                 translations:
                   langCode && result.replyTranslation
                     ? { ...(m.translations || {}), [langCode]: result.replyTranslation }
@@ -468,8 +435,8 @@ export default function App() {
               ...updatedMessages,
               {
                 id: replyMsgId,
-                sender: 'marco',
-                text: result.replyItalian,
+                sender: 'alex',
+                text: result.replyEnglish,
                 translations:
                   langCode && result.replyTranslation
                     ? { [langCode]: result.replyTranslation }
@@ -489,10 +456,12 @@ export default function App() {
             },
           };
         });
+        })();
+        return freeFallbackPromise;
       };
 
       const isOfflineNow = typeof navigator !== 'undefined' && !navigator.onLine;
-      if (isOfflineNow || Date.now() < cloudCooldownUntilRef.current) {
+      if (isOfflineNow) {
         try {
           await runAutomaticFreeFallback();
         } finally {
@@ -500,9 +469,6 @@ export default function App() {
         }
         return;
       }
-
-      const streamController = new AbortController();
-      const fallbackController = new AbortController();
 
       const updateStreamedReplyText = (partialReply: string) => {
         if (!partialReply) return;
@@ -515,7 +481,7 @@ export default function App() {
                 ...latest.messages,
                 {
                   id: replyMsgId,
-                  sender: 'marco' as const,
+                  sender: 'alex' as const,
                   text: partialReply,
                   timestamp: formatTimeNow(),
                 },
@@ -536,7 +502,7 @@ export default function App() {
         if (winnerLocked) return;
         winnerLocked = true;
         setIsTyping(false);
-        const finalReply = payload.replyItalian || '';
+        const finalReply = payload.replyEnglish || '';
         if (finalReply && autoSpeakRef.current && !autoSpoken) {
           autoSpoken = true;
           play({
@@ -549,11 +515,11 @@ export default function App() {
         setThreads((prev) => {
           const latest = prev[threadKey] || currentThread;
           let messages = latest.messages.map((m) => {
-            if (m.id === userMsgId && payload.hasMistake && payload.correctedItalian) {
+            if (m.id === userMsgId && payload.hasMistake && payload.correctedEnglish) {
               return {
                 ...m,
                 correction: {
-                  correctedItalian: payload.correctedItalian,
+                  correctedEnglish: payload.correctedEnglish,
                   explanation: payload.explanation || '',
                 },
               };
@@ -579,7 +545,7 @@ export default function App() {
               ...messages,
               {
                 id: replyMsgId,
-                sender: 'marco',
+                sender: 'alex',
                 text: finalReply,
                 translations:
                   langCode && payload.replyTranslation
@@ -619,21 +585,20 @@ export default function App() {
           streamController.abort();
           fallbackController.abort();
         }
-      }, 3500);
+      }, 2400);
 
       const hardStopTimer = window.setTimeout(() => {
         hardStopped = true;
         streamController.abort();
         fallbackController.abort();
-        setIsTyping(false);
-      }, 12000);
+      }, 9500);
 
       const sendStreamRequest = async (): Promise<void> => {
         const timer = window.setTimeout(() => {
           if (!streamHasActivity) {
             streamController.abort();
           }
-        }, 3500);
+        }, 2400);
         try {
           const res = await fetch('/api/chat/stream', {
             method: 'POST',
@@ -688,14 +653,14 @@ export default function App() {
                   streamHasActivity = true;
                   streamedReply += evt.delta;
                   updateStreamedReplyText(streamedReply);
-                } else if (evt.type === 'reply' && evt.replyItalian) {
+                } else if (evt.type === 'reply' && evt.replyEnglish) {
                   streamHasActivity = true;
-                  streamedReply = evt.replyItalian;
+                  streamedReply = evt.replyEnglish;
                   updateStreamedReplyText(streamedReply);
-                } else if (evt.type === 'reply_complete' && evt.replyItalian) {
+                } else if (evt.type === 'reply_complete' && evt.replyEnglish) {
                   streamHasActivity = true;
                   replyCompleteReceived = true;
-                  streamedReply = evt.replyItalian;
+                  streamedReply = evt.replyEnglish;
                   updateStreamedReplyText(streamedReply);
                   if (autoSpeakRef.current && !autoSpoken) {
                     autoSpoken = true;
@@ -712,15 +677,15 @@ export default function App() {
                   replyCompleteReceived = true;
                   fallbackController.abort();
                   applyCompletedReply({
-                    replyItalian: evt.replyItalian || streamedReply,
+                    replyEnglish: evt.replyEnglish || streamedReply,
                     hasMistake: evt.hasMistake,
-                    correctedItalian: evt.correctedItalian,
+                    correctedEnglish: evt.correctedEnglish,
                     explanation: evt.explanation,
                     replyTranslation: evt.replyTranslation,
                     suggestedNextReply: evt.suggestedNextReply,
                   });
                 } else if (evt.type === 'error') {
-                  const err = new Error(evt.error || 'Errore di connessione') as Error & {
+                  const err = new Error(evt.error || 'Connection error') as Error & {
                     noRetry?: boolean;
                   };
                   if (
@@ -736,7 +701,7 @@ export default function App() {
           }
 
           if (!completed && !winnerLocked) {
-            throw new Error('Risposta incompleta');
+            throw new Error('Incomplete response');
           }
         } finally {
           window.clearTimeout(timer);
@@ -744,7 +709,7 @@ export default function App() {
       };
 
       const sendChatRequest = async (): Promise<void> => {
-        const timer = window.setTimeout(() => fallbackController.abort(), 3200);
+        const timer = window.setTimeout(() => fallbackController.abort(), 2400);
         try {
           const res = await fetch('/api/chat', {
             method: 'POST',
@@ -760,8 +725,8 @@ export default function App() {
             data = null;
           }
 
-          if (!res.ok || !data?.replyItalian) {
-            const msg = data?.error || 'Errore di connessione';
+          if (!res.ok || !data?.replyEnglish) {
+            const msg = data?.error || 'Connection error';
             const err = new Error(msg) as Error & { noRetry?: boolean };
             if (res.status === 429 || (res.status >= 400 && res.status < 500 && res.status !== 408)) {
               err.noRetry = true;
@@ -789,7 +754,13 @@ export default function App() {
         if (!streamHasActivity && !replyCompleteReceived && !winnerLocked && !hardStopped) {
           startFallbackOnce()?.catch(() => {});
         }
-      }, 1500);
+      }, 650);
+
+      const freeRaceTimer = window.setTimeout(() => {
+        if (!streamHasActivity && !replyCompleteReceived && !winnerLocked && !hardStopped) {
+          runAutomaticFreeFallback().catch(() => {});
+        }
+      }, 900);
 
       try {
         try {
@@ -797,7 +768,7 @@ export default function App() {
         } catch (streamErr: unknown) {
           if (winnerLocked) return;
           if (typeof navigator !== 'undefined' && !navigator.onLine) {
-            throw new Error('Sembri offline.');
+            throw new Error('You appear to be offline.');
           }
           if (hardStopped || (streamErr instanceof Error && (streamErr as Error & { noRetry?: boolean }).noRetry)) {
             throw streamErr;
@@ -806,16 +777,16 @@ export default function App() {
         }
       } catch {
         if (!winnerLocked) {
-          cloudCooldownUntilRef.current = Date.now() + 300000;
           try {
             await runAutomaticFreeFallback();
           } catch {
             setFailedMessage(text);
-            setChatError('Connessione non riuscita. Tocca Riprova.');
+            setChatError('Connection failed. Tap Retry.');
           }
         }
       } finally {
         window.clearTimeout(parallelRaceTimer);
+        window.clearTimeout(freeRaceTimer);
         window.clearTimeout(stallFallbackTimer);
         window.clearTimeout(hardStopTimer);
         setIsTyping(false);
@@ -865,7 +836,7 @@ export default function App() {
       });
     };
 
-    if ((typeof navigator !== 'undefined' && !navigator.onLine) || Date.now() < cloudCooldownUntilRef.current) {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
       applyFreeRotation();
       setIsGeneratingPhrases(false);
       return;
@@ -883,7 +854,7 @@ export default function App() {
             text: m.text,
           })),
         }),
-        signal: AbortSignal.timeout(12000),
+        signal: AbortSignal.timeout(8000),
       });
 
       const data = (await response.json()) as {
@@ -892,7 +863,7 @@ export default function App() {
       };
 
       if (!response.ok || !data.phrases?.length) {
-        throw new Error(data.error || 'Impossibile generare nuove frasi');
+        throw new Error(data.error || 'Unable to generate new phrases');
       }
 
       setThreads((prev) => {
@@ -918,7 +889,7 @@ export default function App() {
     setMobileView('chat');
   }, []);
 
-  // Seamless automatic translation: chains zero-key client translators and silently falls back to /api/translate (Cloud) + Pollinations queue
+  // Automatic seamless Cloud -> Keyless translation with zero buttons or lockouts
   const handleRequestTranslation = useCallback(
     async (messageId: string, text: string, overrideLang?: TranslationLanguage) => {
       const lang = overrideLang || selectedLangRef.current;
@@ -946,6 +917,7 @@ export default function App() {
       };
 
       const tryServerCloudTranslate = async (): Promise<string | null> => {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) return null;
         try {
           const response = await fetch('/api/translate', {
             method: 'POST',
@@ -954,37 +926,30 @@ export default function App() {
               text,
               targetLanguageName: lang.name,
             }),
-            signal: AbortSignal.timeout(10000),
+            signal: AbortSignal.timeout(3500),
           });
           const data = (await response.json()) as { translation?: string };
           if (response.ok && data.translation?.trim()) {
             return data.translation.trim();
           }
         } catch {
-          // Ignore server failure
+          // Silently fall back to keyless client translation
         }
         return null;
       };
 
       try {
-        const keylessTrans = await translateKeylessText(text, lang.code, lang.name);
-        if (keylessTrans) {
-          saveTranslation(keylessTrans);
-          return;
-        }
-        // Automatic silent fallback to Cloud API
         const autoCloudTrans = await tryServerCloudTranslate();
         if (autoCloudTrans) {
           saveTranslation(autoCloudTrans);
           return;
         }
-        // Final automatic silent backup: Pollinations queue
-        const queuedPollinations = await waitAndTranslateWithPollinations(text, lang.name);
-        if (queuedPollinations) {
-          saveTranslation(queuedPollinations);
+        const keylessTrans = await translateKeylessText(text, lang.code, lang.name);
+        if (keylessTrans) {
+          saveTranslation(keylessTrans);
           return;
         }
-        setChatError('Traduzione al momento non disponibile. Riprova.');
+        setChatError('Translation is currently unavailable. Please try again.');
       } finally {
         setTranslatingIds((prev) => {
           const next = { ...prev };
@@ -996,9 +961,9 @@ export default function App() {
     [currentThread, threadKey]
   );
 
-  const latestMarcoMessage = useMemo(() => {
+  const latestAlexMessage = useMemo(() => {
     for (let i = currentThread.messages.length - 1; i >= 0; i--) {
-      if (currentThread.messages[i].sender === 'marco') {
+      if (currentThread.messages[i].sender === 'alex') {
         return currentThread.messages[i];
       }
     }
@@ -1010,7 +975,7 @@ export default function App() {
   const memorizedCount = currentThread.phrases.filter((p) => p.memorized).length;
 
   return (
-    <div className="h-dvh w-full overflow-hidden flex bg-[#F8FAF8] text-[#111B16]">
+    <div className="h-dvh w-full overflow-hidden flex bg-[#F6F8FC] text-[#0F1B2D]">
       {/* Left Sidebar: Topics & 3 Levels */}
       <div
         className={`${
@@ -1037,7 +1002,6 @@ export default function App() {
           level={activeLevel}
           isTyping={isTyping}
           autoSpeak={autoSpeak}
-          liteMode={liteMode}
           memorizedCount={memorizedCount}
           totalPhrases={currentThread.phrases.length}
           onBackToScenarios={() => setMobileView('list')}
@@ -1053,20 +1017,19 @@ export default function App() {
               return next;
             });
           }}
-          onToggleLiteMode={() => setLiteMode((prev) => !prev)}
           onResetChat={handleResetChat}
         />
 
         {/* Mobile Quick Level & Topic Strip */}
-        <div className="md:hidden bg-white/95 backdrop-blur-md border-b border-[#DCE4DD] px-3 py-1.5 flex items-center justify-between gap-2 shrink-0">
+        <div className="md:hidden bg-white/95 backdrop-blur-md border-b border-[#D5DFEC] px-3 py-1.5 flex items-center justify-between gap-2 shrink-0">
           <button
             type="button"
             onClick={() => setMobileView('list')}
-            className="text-xs font-semibold text-[#0F5E4B] whitespace-nowrap cursor-pointer py-1 shrink-0"
+            className="text-xs font-semibold text-[#1B4D8E] whitespace-nowrap cursor-pointer py-1 shrink-0"
           >
             {SHORT_SCENARIOS[activeScenario]} ▾
           </button>
-          <div className="flex items-center gap-1 bg-[#EEF3EF] p-0.5 rounded-xl shrink-0">
+          <div className="flex items-center gap-1 bg-[#EDF2F8] p-0.5 rounded-xl shrink-0">
             {LEVELS.map((lvl) => (
               <button
                 key={lvl.id}
@@ -1074,8 +1037,8 @@ export default function App() {
                 onClick={() => handleSelectLevel(lvl.id)}
                 className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
                   lvl.id === activeLevel
-                    ? 'bg-white text-[#0F5E4B] shadow-[0_1px_2px_rgba(15,23,42,0.06)]'
-                    : 'text-[#4E5F56]'
+                    ? 'bg-white text-[#1B4D8E] shadow-[0_1px_2px_rgba(15,27,45,0.06)]'
+                    : 'text-[#4E607A]'
                 }`}
               >
                 {lvl.label}
@@ -1088,51 +1051,53 @@ export default function App() {
         <div className="flex-1 overflow-y-auto chat-scroll px-3 sm:px-6 py-4 space-y-3">
           {/* Topic Context Banner */}
           <div className="flex justify-center mb-2">
-            <div className="bg-white/95 border border-[#DCE4DD] text-[#4E5F56] rounded-2xl px-4 py-2 text-xs text-center max-w-md shadow-[0_1px_2px_rgba(15,23,42,0.04)] leading-relaxed">
-              <span className="font-semibold text-[#111B16]">
+            <div className="bg-white/95 border border-[#D5DFEC] text-[#4E607A] rounded-2xl px-4 py-2 text-xs text-center max-w-md shadow-[0_1px_2px_rgba(15,27,45,0.04)] leading-relaxed">
+              <span className="font-semibold text-[#0F1B2D]">
                 {activeScenarioMeta.title} · {activeLevelMeta.label}
               </span>
               <span className="mx-1.5" aria-hidden="true">
                 —
               </span>
               <span>
-                Parla in modo naturale in italiano con Marco. Se fai un errore, ricevi subito correzioni e consigli.
+                Practice natural English with Alex. Instant grammar tips and corrections appear automatically.
               </span>
             </div>
           </div>
 
-          {/* Clean Empty State with Italian Logo */}
+          {/* Clean Empty State with App Logo */}
           {currentThread.messages.length === 0 && !isTyping && (
             <div className="flex justify-center pt-6 pb-2">
-              <div className="bg-white/95 border border-[#DCE4DD] rounded-2xl p-6 max-w-sm w-full text-center shadow-[0_4px_16px_rgba(15,23,42,0.06)]">
+              <div className="bg-white/95 border border-[#D5DFEC] rounded-2xl p-6 max-w-sm w-full text-center shadow-[0_4px_16px_rgba(15,27,45,0.06)]">
                 <div className="flex justify-center mb-3.5">
                   {logoError ? (
-                    <div className="w-20 h-20 rounded-2xl bg-[#0F5E4B] text-white font-bold text-lg flex items-center justify-center border border-[#0F5E4B]/20 shadow-[0_2px_8px_rgba(15,94,75,0.22)]">
-                      IT
+                    <div className="w-20 h-20 rounded-2xl bg-[#1B4D8E] text-white font-bold text-lg flex items-center justify-center border border-[#1B4D8E]/20 shadow-[0_2px_8px_rgba(27,77,142,0.22)]">
+                      EN
                     </div>
                   ) : (
                     <img
                       src={APP_LOGO_URL}
-                      alt="Impara l'Italiano Parlando"
+                      alt="Learn English Talking"
                       referrerPolicy="no-referrer"
                       onError={() => setLogoError(true)}
-                      className="w-20 h-20 rounded-2xl object-cover border border-[#DCE4DD] bg-white shadow-[0_2px_8px_rgba(15,94,75,0.12)]"
+                      className="w-20 h-20 rounded-2xl object-cover border border-[#D5DFEC] bg-white shadow-[0_2px_8px_rgba(27,77,142,0.14)]"
                     />
                   )}
                 </div>
-                <h3 className="text-[16px] font-bold text-[#111B16] mb-1">
+                <h3 className="font-display text-[16.5px] font-bold text-[#0F1B2D] mb-1">
                   {activeScenarioMeta.title}
                 </h3>
-                <p className="text-xs text-[#6B7D74] leading-relaxed mb-4">
+                <p className="text-xs text-[#4E607A] leading-relaxed mb-4">
                   {activeScenarioMeta.roleDescription}
                 </p>
                 <button
                   type="button"
-                  onClick={() => handleSendMessage('Ciao! Vorrei fare pratica con il mio italiano.')}
-                  className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#0F5E4B] hover:bg-[#0B4A3B] text-white text-xs font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-[0_2px_6px_rgba(15,94,75,0.22)]"
+                  onClick={() =>
+                    handleSendMessage("Hi Alex! I'd like to practice speaking English with you.")
+                  }
+                  className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#1B4D8E] hover:bg-[#143B6E] text-white text-xs font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-[0_2px_6px_rgba(27,77,142,0.24)]"
                 >
                   <MessageCircle className="w-4 h-4" />
-                  <span>Inizia la conversazione</span>
+                  <span>Start chatting</span>
                 </button>
               </div>
             </div>
@@ -1163,7 +1128,7 @@ export default function App() {
               <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl px-4 py-2 text-xs max-w-md text-center flex items-center justify-center gap-2 flex-wrap">
                 <span>
                   {!isOnline
-                    ? 'Sembri offline. Controlla la connessione internet per continuare a parlare con Marco.'
+                    ? 'You appear to be offline. Check your internet connection to keep chatting with Alex.'
                     : chatError || audioError}
                 </span>
                 {failedMessage && isOnline && (
@@ -1172,7 +1137,7 @@ export default function App() {
                     onClick={() => handleSendMessage(failedMessage)}
                     className="px-2.5 py-1 rounded-lg bg-rose-700 text-white font-semibold hover:bg-rose-800 transition-colors cursor-pointer"
                   >
-                    Riprova
+                    Retry
                   </button>
                 )}
                 {isOnline && (
@@ -1183,7 +1148,7 @@ export default function App() {
                       setFailedMessage(null);
                     }}
                     className="text-rose-600 hover:text-rose-900 font-bold px-1 cursor-pointer"
-                    aria-label="Chiudi"
+                    aria-label="Close"
                   >
                     ×
                   </button>
@@ -1200,7 +1165,7 @@ export default function App() {
           inputText={inputText}
           setInputText={setInputText}
           disabled={isTyping}
-          suggestedHint={latestMarcoMessage?.suggestedNextReply}
+          suggestedHint={latestAlexMessage?.suggestedNextReply}
           onSendMessage={handleSendMessage}
           onUnlockAudio={() => {
             if (autoSpeakRef.current) {
@@ -1211,7 +1176,7 @@ export default function App() {
       </main>
 
       {/* Right Panel on Desktop (xl+): 5 Key Phrases */}
-      <aside className="hidden xl:flex xl:w-[350px] shrink-0 h-full border-l border-[#DCE4DD]">
+      <aside className="hidden xl:flex xl:w-[350px] shrink-0 h-full border-l border-[#D5DFEC]">
         <div className="w-full h-full">
           <PhrasesPanel
             phrases={currentThread.phrases}
@@ -1234,7 +1199,7 @@ export default function App() {
           onClick={() => setPhrasesDrawerOpen(false)}
         >
           <div
-            className="w-full sm:w-[400px] h-[84dvh] sm:h-full bg-[#F8FAF8] rounded-t-2xl sm:rounded-none overflow-hidden shadow-2xl flex flex-col"
+            className="w-full sm:w-[400px] h-[84dvh] sm:h-full bg-[#F6F8FC] rounded-t-2xl sm:rounded-none overflow-hidden shadow-2xl flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Mobile Sheet Drag Handle */}

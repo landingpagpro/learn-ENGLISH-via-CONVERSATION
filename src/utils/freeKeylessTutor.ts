@@ -1,9 +1,9 @@
 import { KeyPhrase, ProficiencyLevel, ScenarioId } from '../types';
 
 export interface KeylessChatResult {
-  replyItalian: string;
+  replyEnglish: string;
   hasMistake: boolean;
-  correctedItalian: string;
+  correctedEnglish: string;
   explanation: string;
   replyTranslation?: string;
   suggestedNextReply: string;
@@ -30,8 +30,9 @@ interface ChromeTranslatorStatic {
   create: (opts: { sourceLanguage: string; targetLanguage: string }) => Promise<ChromeTranslatorInstance>;
 }
 
-let lastPollinationsCallAt = 0;
-const POLLINATIONS_MIN_INTERVAL_MS = 46_000;
+function isPollinationsLimitBody(status: number, bodyText: string): boolean {
+  return status === 402 || /free limit reached|retry after/i.test(bodyText);
+}
 
 function getChromeLanguageModel(): ChromeLanguageModelStatic | null {
   if (typeof window === 'undefined') return null;
@@ -58,7 +59,7 @@ function getChromeTranslator(): ChromeTranslatorStatic | null {
 async function tryChromeBuiltInChat(
   scenarioId: ScenarioId,
   level: ProficiencyLevel,
-  history: Array<{ sender: 'user' | 'marco'; text: string }>,
+  history: Array<{ sender: 'user' | 'alex'; text: string }>,
   userMessage: string,
   targetLanguageName?: string
 ): Promise<KeylessChatResult | null> {
@@ -71,35 +72,35 @@ async function tryChromeBuiltInChat(
       if (status === 'no' || status === 'unavailable') return null;
     }
 
-    const systemPrompt = `You are Marco, a friendly native Italian tutor. Scenario: ${scenarioId}. Level: ${level}.
+    const systemPrompt = `You are Alex, a friendly native American English tutor. Scenario: ${scenarioId}. Level: ${level}.
 Respond ONLY with valid JSON (no markdown) using these keys:
-replyItalian (natural Italian, 1 short sentence + 1 short question, max 25 words),
+replyEnglish (natural English, 1 short sentence + 1 short question directly answering the learner, max 28 words),
 hasMistake (boolean),
-correctedItalian (corrected Italian or empty string),
-explanation (1 short tip in simple Italian or empty string),
-suggestedNextReply (1 short Italian reply hint, max 12 words)${
-      targetLanguageName ? `, replyTranslation (translation of replyItalian into ${targetLanguageName})` : ''
+correctedEnglish (corrected English sentence or empty string),
+explanation (1 short tip in simple English or empty string),
+suggestedNextReply (1 short English reply hint, max 12 words)${
+      targetLanguageName ? `, replyTranslation (translation of replyEnglish into ${targetLanguageName})` : ''
     }.`;
 
     const session = await LM.create({ systemPrompt });
     try {
       const recent = history
-        .slice(-2)
-        .map((m) => `${m.sender === 'user' ? 'Studente' : 'Marco'}: ${m.text}`)
+        .slice(-4)
+        .map((m) => `${m.sender === 'user' ? 'Learner' : 'Alex'}: ${m.text}`)
         .join('\n');
-      const raw = await session.prompt(`${recent ? `${recent}\n` : ''}Studente: ${userMessage}`);
+      const raw = await session.prompt(`${recent ? `${recent}\n` : ''}Learner: ${userMessage}`);
       const jsonMatch = raw.match(/\{[\s\S]*\}/);
       if (!jsonMatch) return null;
       const parsed = JSON.parse(jsonMatch[0]) as Partial<KeylessChatResult>;
-      if (!parsed.replyItalian) return null;
+      if (!parsed.replyEnglish) return null;
       return {
-        replyItalian: parsed.replyItalian.trim(),
+        replyEnglish: parsed.replyEnglish.trim(),
         hasMistake: Boolean(parsed.hasMistake),
-        correctedItalian: (parsed.correctedItalian || '').trim(),
+        correctedEnglish: (parsed.correctedEnglish || '').trim(),
         explanation: (parsed.explanation || '').trim(),
         replyTranslation: (parsed.replyTranslation || '').trim(),
-        suggestedNextReply: (parsed.suggestedNextReply || 'Sì, volentieri! E tu?').trim(),
-        engineLabel: 'AI Locale Browser',
+        suggestedNextReply: (parsed.suggestedNextReply || 'Yes, sure! How about you?').trim(),
+        engineLabel: 'Browser Local AI',
       };
     } finally {
       session.destroy?.();
@@ -112,66 +113,114 @@ suggestedNextReply (1 short Italian reply hint, max 12 words)${
 async function tryClientPollinationsChat(
   scenarioId: ScenarioId,
   level: ProficiencyLevel,
-  history: Array<{ sender: 'user' | 'marco'; text: string }>,
+  history: Array<{ sender: 'user' | 'alex'; text: string }>,
   userMessage: string,
   targetLanguageName?: string
 ): Promise<KeylessChatResult | null> {
-  const now = Date.now();
-  if (now - lastPollinationsCallAt < POLLINATIONS_MIN_INTERVAL_MS) {
-    return null;
-  }
-
-  lastPollinationsCallAt = now;
   try {
-    const recent = history
-      .slice(-2)
-      .map((m) => `${m.sender === 'user' ? 'Learner' : 'Marco'}: ${m.text}`)
-      .join('\n');
+    const historyMessages = history
+      .slice(-6)
+      .filter((m) => m.text && m.text.trim())
+      .map((m) => ({
+        role: m.sender === 'user' ? ('user' as const) : ('assistant' as const),
+        content: m.text.trim(),
+      }));
 
     const res = await fetch('https://text.pollinations.ai/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(1800),
+      signal: AbortSignal.timeout(5500),
       body: JSON.stringify({
         model: 'openai',
         jsonMode: true,
         messages: [
           {
             role: 'system',
-            content: `You are Marco, a friendly native Italian tutor in scenario "${scenarioId}" at level "${level}".
-ALWAYS write replyItalian, correctedItalian, explanation, and suggestedNextReply strictly in Italian.
-Return ONLY valid JSON with keys: replyItalian, hasMistake (boolean), correctedItalian, explanation, suggestedNextReply${
-              targetLanguageName ? `, replyTranslation (translate replyItalian into ${targetLanguageName})` : ''
-            }.`,
+            content: `You are Alex, a friendly native American English tutor in scenario "${scenarioId}" at level "${level}".
+CRITICAL RULE: Stay 100% focused on the EXACT topic, question, or situation the learner just brought up in their latest message (and conversation history). Answer their actual point directly. NEVER change the subject or jump to unrelated topics (like coffee, travel, or random cities) unless the learner mentioned them.
+Respond ONLY with valid JSON containing these keys:
+- "replyEnglish": Alex's conversational reply directly responding to what the learner just said (1 short natural sentence + 1 follow-up question on the SAME topic, max 28 words; NEVER echo the learner's own sentence).
+- "hasMistake": boolean (true if the learner made a real English grammar/spelling mistake or used a non-English word).
+- "correctedEnglish": corrected version of the learner's sentence (or "" if hasMistake is false).
+- "explanation": 1 brief tip in simple English explaining the fix (or "" if hasMistake is false).
+- "suggestedNextReply": 1 short English reply idea the learner could say next on the same topic (max 12 words).${
+              targetLanguageName ? `\n- "replyTranslation": natural translation of replyEnglish into ${targetLanguageName}.` : ''
+            }`,
           },
+          ...historyMessages,
           {
             role: 'user',
-            content: `${recent ? `${recent}\n` : ''}Learner: "${userMessage}"`,
+            content: userMessage.trim(),
           },
         ],
       }),
     });
 
-    if (!res.ok) {
+    const rawText = await res.text();
+    if (!res.ok || isPollinationsLimitBody(res.status, rawText)) {
       return null;
     }
 
-    const rawText = await res.text();
     const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return null;
-    const parsed = JSON.parse(jsonMatch[0]) as Partial<KeylessChatResult>;
-    if (!parsed.replyItalian || /free limit reached/i.test(parsed.replyItalian)) {
-      return null;
+    if (jsonMatch) {
+      try {
+        const parsed = JSON.parse(jsonMatch[0]) as Partial<KeylessChatResult>;
+        if (parsed.replyEnglish && !isPollinationsLimitBody(200, parsed.replyEnglish)) {
+          const localCheck = analyzeEnglishMessage(userMessage);
+          const hasMistake = Boolean(parsed.hasMistake) || localCheck.hasMistake;
+          const correctedEnglish =
+            (parsed.correctedEnglish || '').trim() || (hasMistake ? localCheck.correctedEnglish : '');
+          const explanation =
+            (parsed.explanation || '').trim() || (hasMistake ? localCheck.explanation : '');
+          let replyEnglish = parsed.replyEnglish.trim();
+          let suggestedNextReply = (parsed.suggestedNextReply || 'Sounds great, let us keep going!').trim();
+          const normalizedReply = replyEnglish.toLowerCase().replace(/[.!?]+$/g, '').trim();
+          const normalizedCorr = correctedEnglish.toLowerCase().replace(/[.!?]+$/g, '').trim();
+          const normalizedUser = userMessage.toLowerCase().replace(/[.!?]+$/g, '').trim();
+          if (
+            !replyEnglish ||
+            normalizedReply === normalizedCorr ||
+            normalizedReply === normalizedUser
+          ) {
+            const coachFallback = buildLocalCoachReply(scenarioId, level, history, userMessage);
+            replyEnglish = coachFallback.replyEnglish;
+            suggestedNextReply = coachFallback.suggestedNextReply;
+          }
+          return {
+            replyEnglish,
+            hasMistake,
+            correctedEnglish,
+            explanation,
+            replyTranslation: (parsed.replyTranslation || '').trim(),
+            suggestedNextReply,
+            engineLabel: 'Free Browser AI',
+          };
+        }
+      } catch {
+        // Fall through to plain-text check
+      }
     }
-    return {
-      replyItalian: parsed.replyItalian.trim(),
-      hasMistake: Boolean(parsed.hasMistake),
-      correctedItalian: (parsed.correctedItalian || '').trim(),
-      explanation: (parsed.explanation || '').trim(),
-      replyTranslation: (parsed.replyTranslation || '').trim(),
-      suggestedNextReply: (parsed.suggestedNextReply || 'Va bene, continuiamo pure!').trim(),
-      engineLabel: 'AI Gratuita Browser',
-    };
+
+    const cleanedPlain = rawText.trim().replace(/^["']|["']$/g, '').trim();
+    if (
+      cleanedPlain.length >= 3 &&
+      cleanedPlain.length <= 400 &&
+      !cleanedPlain.startsWith('{') &&
+      !cleanedPlain.startsWith('<') &&
+      !/error|rate limit|quota|unauthorized|free limit/i.test(cleanedPlain)
+    ) {
+      const localCheck = analyzeEnglishMessage(userMessage);
+      return {
+        replyEnglish: cleanedPlain,
+        hasMistake: localCheck.hasMistake,
+        correctedEnglish: localCheck.correctedEnglish,
+        explanation: localCheck.explanation,
+        suggestedNextReply: 'Yes, I agree! What do you think?',
+        engineLabel: 'Free Browser AI',
+      };
+    }
+
+    return null;
   } catch {
     return null;
   }
@@ -185,80 +234,115 @@ interface GrammarRule {
 
 const GRAMMAR_RULES: GrammarRule[] = [
   {
-    pattern: /\b(hello|hi|hey)\b/i,
-    replace: (s) => s.replace(/\b(hello|hi|hey)\b/gi, 'Ciao'),
-    explanation: 'In italiano si dice "Ciao" per salutare in modo amichevole.',
+    pattern: /\b(bonjour|salut)\b/i,
+    replace: (s) => s.replace(/\b(bonjour|salut)\b/gi, 'Hello'),
+    explanation: 'In English, say "Hello" or "Hi" to greet someone naturally.',
   },
   {
-    pattern: /\bhow are you\b/i,
-    replace: (s) => s.replace(/\bhow are you\b/gi, 'come stai'),
-    explanation: '"How are you" in italiano si traduce "Come stai?".',
+    pattern: /\b(ciao|buongiorno|buonasera)\b/i,
+    replace: (s) => s.replace(/\b(ciao|buongiorno|buonasera)\b/gi, 'Hello'),
+    explanation: 'In English, use "Hello" or "Good morning" as a greeting.',
   },
   {
-    pattern: /\b(thank you|thanks|merci|shukran)\b/i,
-    replace: (s) => s.replace(/\b(thank you|thanks|merci|shukran)\b/gi, 'grazie'),
-    explanation: 'In italiano per ringraziare si dice sempre "Grazie" o "Grazie mille".',
+    pattern: /\b(merci|grazie|shukran)\b/i,
+    replace: (s) => s.replace(/\b(merci|grazie|shukran)\b/gi, 'thank you'),
+    explanation: 'In English, say "Thank you" or "Thanks".',
   },
   {
-    pattern: /\b(please|s'il vous plaît|s'il te plaît)\b/i,
-    replace: (s) => s.replace(/\b(please|s'il vous plaît|s'il te plaît)\b/gi, 'per favore'),
-    explanation: 'Usa "per favore" per chiedere qualcosa con gentilezza.',
+    pattern: /\b(s'il vous plaît|s'il te plaît|per favore)\b/i,
+    replace: (s) => s.replace(/\b(s'il vous plaît|s'il te plaît|per favore)\b/gi, 'please'),
+    explanation: 'Use "please" in English to make a polite request.',
   },
   {
-    pattern: /\bbonjour\b/i,
-    replace: (s) => s.replace(/\bbonjour\b/gi, 'Buongiorno'),
-    explanation: 'In italiano il saluto del giorno è "Buongiorno".',
+    pattern: /\bcomment ça va\b|\bcome stai\b/i,
+    replace: (s) => s.replace(/\b(comment ça va|come stai)\b/gi, 'how are you'),
+    explanation: 'In English, ask "How are you?" to check how someone is doing.',
   },
   {
-    pattern: /\bje suis\b/i,
-    replace: (s) => s.replace(/\bje suis\b/gi, 'io sono'),
-    explanation: 'In italiano si usa "io sono" (o semplicemente "sono").',
+    pattern: /\bi am agree\b/i,
+    replace: (s) => s.replace(/\bi am agree\b/gi, 'I agree'),
+    explanation: '"Agree" is a verb, so say "I agree" (not "I am agree").',
   },
   {
-    pattern: /\bsono bene\b/i,
-    replace: (s) => s.replace(/\bsono bene\b/gi, 'sto bene'),
-    explanation: 'Per dire come ti senti si usa il verbo "stare": "Sto bene", non "Sono bene".',
+    pattern: /\bi no understand\b|\bi not understand\b/i,
+    replace: (s) => s.replace(/\b(i no understand|i not understand)\b/gi, "I don't understand"),
+    explanation: 'Use "don\'t" for present negative verbs: "I don\'t understand."',
   },
   {
-    pattern: /\bio essere\b/i,
-    replace: (s) => s.replace(/\bio essere\b/gi, 'io sono'),
-    explanation: 'Il verbo "essere" alla prima persona singolare è "io sono".',
+    pattern: /\bi have (\d+|twenty|thirty|forty|twenty-five) years\b/i,
+    replace: (s) => s.replace(/\bi have (\d+|twenty|thirty|forty|twenty-five) years\b/gi, 'I am $1 years old'),
+    explanation: 'In English, use the verb "be" for age: "I am ... years old."',
   },
   {
-    pattern: /\bio avere\b/i,
-    replace: (s) => s.replace(/\bio avere\b/gi, 'io ho'),
-    explanation: 'Il verbo "avere" alla prima persona singolare è "io ho".',
+    pattern: /\bexplain me\b/i,
+    replace: (s) => s.replace(/\bexplain me\b/gi, 'explain to me'),
+    explanation: 'With "explain", add "to": "explain to me" or "explain this to me."',
   },
   {
-    pattern: /\bio andare\b/i,
-    replace: (s) => s.replace(/\bio andare\b/gi, 'io vado'),
-    explanation: 'Il verbo "andare" con "io" diventa "vado".',
+    pattern: /\bi am boring\b/i,
+    replace: (s) => s.replace(/\bi am boring\b/gi, 'I am bored'),
+    explanation: 'Say "I am bored" for your feeling; "boring" describes something uninteresting.',
   },
   {
-    pattern: /\bio volere\b/i,
-    replace: (s) => s.replace(/\bio volere\b/gi, 'vorrei'),
-    explanation: 'Per esprimere un desiderio in modo cortese si usa "vorrei" oppure "voglio".',
+    pattern: /\bmore better\b/i,
+    replace: (s) => s.replace(/\bmore better\b/gi, 'much better'),
+    explanation: '"Better" is already comparative, so say "much better" (never "more better").',
   },
   {
-    pattern: /\bio piacere\b|\bio piace\b/i,
-    replace: (s) => s.replace(/\b(io piacere|io piace)\b/gi, 'mi piace'),
-    explanation: 'In italiano si dice "mi piace" (non "io piace").',
+    pattern: /\bi am go\b|\bi going\b/i,
+    replace: (s) => s.replace(/\b(i am go|i going)\b/gi, 'I am going'),
+    explanation: 'Use "am + -ing" for present continuous actions: "I am going."',
   },
   {
-    pattern: /\bbuon giorno\b/i,
-    replace: (s) => s.replace(/\bbuon giorno\b/gi, 'buongiorno'),
-    explanation: '"Buongiorno" in italiano si scrive di solito tutto attaccato.',
+    pattern: /\b(he|she) go\b/i,
+    replace: (s) => s.replace(/\b(he|she) go\b/gi, '$1 goes'),
+    explanation: 'With "he" or "she" in simple present, add -es: "goes".',
   },
   {
-    pattern: /\bcaffe\b/i,
-    replace: (s) => s.replace(/\bcaffe\b/gi, 'caffè'),
-    explanation: 'La parola "caffè" ha l’accento grave sulla lettera finale: è.',
+    pattern: /\b(he|she) have\b/i,
+    replace: (s) => s.replace(/\b(he|she) have\b/gi, '$1 has'),
+    explanation: 'With "he" or "she", use "has" instead of "have".',
+  },
+  {
+    pattern: /\bi (don't|do not) has\b/i,
+    replace: (s) => s.replace(/\bi (don't|do not) has\b/gi, "I don't have"),
+    explanation: 'After "don\'t", always use the base verb "have": "I don\'t have."',
+  },
+  {
+    pattern: /\byesterday i go\b/i,
+    replace: (s) => s.replace(/\byesterday i go\b/gi, 'yesterday I went'),
+    explanation: 'For past actions like "yesterday", use the past tense "went".',
+  },
+  {
+    pattern: /\bi very like\b/i,
+    replace: (s) => s.replace(/\bi very like\b/gi, 'I really like'),
+    explanation: 'Use "really" or "very much" with verbs: "I really like..."',
+  },
+  {
+    pattern: /\bi want that you\b/i,
+    replace: (s) => s.replace(/\bi want that you\b/gi, 'I want you to'),
+    explanation: 'In English, say "I want you to..." instead of "I want that you...".',
+  },
+  {
+    pattern: /\b(peoples|informations|advices|furnitures)\b/i,
+    replace: (s) =>
+      s
+        .replace(/\bpeoples\b/gi, 'people')
+        .replace(/\binformations\b/gi, 'information')
+        .replace(/\badvices\b/gi, 'advice')
+        .replace(/\bfurnitures\b/gi, 'furniture'),
+    explanation: 'Words like "people", "information", and "advice" do not take a final -s here.',
+  },
+  {
+    pattern: /\bi\b(?=\s+[a-z])/,
+    replace: (s) => s.replace(/(^|\s)i(\s|$)/g, '$1I$2'),
+    explanation: 'The pronoun "I" is always capitalized in English.',
   },
 ];
 
-function analyzeItalianMessage(input: string): {
+function analyzeEnglishMessage(input: string): {
   hasMistake: boolean;
-  correctedItalian: string;
+  correctedEnglish: string;
   explanation: string;
 } {
   let corrected = input.trim();
@@ -274,14 +358,14 @@ function analyzeItalianMessage(input: string): {
   if (notes.length > 0 && corrected !== input.trim()) {
     return {
       hasMistake: true,
-      correctedItalian: corrected,
+      correctedEnglish: corrected,
       explanation: notes[0],
     };
   }
 
   return {
     hasMistake: false,
-    correctedItalian: '',
+    correctedEnglish: '',
     explanation: '',
   };
 }
@@ -295,280 +379,280 @@ const SCENARIO_TURNS: Record<ScenarioId, Record<ProficiencyLevel, TurnReply[]>> 
   conversation: {
     beginner: [
       {
-        reply: 'Ciao! Che bello sentirti oggi. Come sta andando la tua giornata?',
-        hint: 'Va tutto molto bene, grazie! E la tua?',
+        reply: 'Hi there! Great to chat with you today. How is your day going so far?',
+        hint: 'It is going great, thanks! How about yours?',
       },
       {
-        reply: 'Ottimo! Di solito cosa ti piace fare nel tempo libero?',
-        hint: 'Nel tempo libero mi piace ascoltare musica e viaggiare.',
+        reply: 'Nice! What do you usually like to do in your free time?',
+        hint: 'In my free time I like listening to music and traveling.',
       },
       {
-        reply: 'Fantastico! Ti piace anche cucinare piatti italiani o preferisci la pizza al ristorante?',
-        hint: 'Adoro la pizza margherita e la pasta fatta in casa!',
+        reply: 'Awesome! Do you enjoy cooking at home or eating out with friends?',
+        hint: 'I love homemade food, and sometimes I eat out with friends!',
       },
       {
-        reply: 'Ottima scelta! Stai parlando italiano benissimo. Quale parola nuova vuoi imparare oggi?',
-        hint: 'Vorrei imparare nuove parole per viaggiare in Italia.',
+        reply: 'Great choice! Your English sounds very natural. What new topic would you like to practice next?',
+        hint: 'I want to practice travel and everyday conversation.',
       },
     ],
     intermediate: [
       {
-        reply: 'Ciao! Mi fa davvero piacere chiacchierare con te. Cosa hai fatto di bello questa settimana?',
-        hint: 'Ho lavorato molto, ma ieri sera sono uscito con degli amici.',
+        reply: 'Hey! Good to catch up with you. What have you been up to lately?',
+        hint: 'I have been working a lot, and last night I met some friends.',
       },
       {
-        reply: 'Bellissimo! C’è qualche città italiana che ti piacerebbe visitare prossimamente?',
-        hint: 'Mi piacerebbe tantissimo visitare Firenze e Roma.',
+        reply: 'Sounds fun! Is there a city or country you would love to visit soon?',
+        hint: 'I would really love to visit London and New York someday.',
       },
       {
-        reply: 'Sono città meravigliose piene di storia e buon cibo. Preferisci il mare o la montagna?',
-        hint: 'Sinceramente preferisco il mare, soprattutto d’estate.',
+        reply: 'Both have amazing food and culture. Do you prefer relaxing by the beach or exploring big cities?',
+        hint: 'Honestly, I prefer the beach, especially in the summer.',
       },
       {
-        reply: 'Hai proprio ragione! Come pensi di praticare l’italiano nei prossimi giorni?',
-        hint: 'Vorrei parlare ogni giorno per dieci minuti con te.',
+        reply: 'I agree! How do you plan to practice your English over the next few days?',
+        hint: 'I want to speak with you for ten minutes every day.',
       },
     ],
     advanced: [
       {
-        reply: 'Ciao! È un piacere confrontarmi con te in italiano. Quale argomento stimolante ti va di esplorare oggi?',
-        hint: 'Mi piacerebbe parlare di come la tecnologia sta cambiando il lavoro.',
+        reply: 'Hey! Great to dive into a real conversation with you. What thought-provoking topic is on your mind today?',
+        hint: 'I would like to talk about how technology is reshaping remote work.',
       },
       {
-        reply: 'Tema attualissimo! Secondo te quali sono i vantaggi principali rispetto a dieci anni fa?',
-        hint: 'Sicuramente la flessibilità, anche se serve attenzione all’equilibrio personale.',
+        reply: 'Very relevant topic! What do you see as the biggest benefit compared to ten years ago?',
+        hint: 'Definitely flexibility, though maintaining work-life balance takes discipline.',
       },
       {
-        reply: 'Hai centrato perfettamente il punto. Pensi che il lavoro da remoto resterà la norma?',
-        hint: 'Credo che il modello ibrido sia la soluzione più equilibrata.',
+        reply: 'You hit the nail on the head. Do you think hybrid work will stay the standard long term?',
+        hint: 'Yes, I think a hybrid model offers the best of both worlds.',
       },
       {
-        reply: 'Analisi lucidissima, complimenti per la fluidità! Vuoi approfondire un altro tema?',
-        hint: 'Sì, parliamo di cultura e cinema italiano.',
+        reply: 'Sharp analysis, your fluency is impressive! Would you like to switch to another subject?',
+        hint: 'Sure, let us talk about movies, culture, and daily habits.',
       },
     ],
   },
   airport: {
     beginner: [
       {
-        reply: 'Buongiorno e benvenuto al check-in! Posso vedere il suo passaporto e il biglietto?',
-        hint: 'Certo, ecco il mio passaporto e il biglietto.',
+        reply: 'Good morning and welcome to check-in! May I see your passport and ticket, please?',
+        hint: 'Sure, here is my passport and my ticket.',
       },
       {
-        reply: 'Perfetto, grazie! Ha un bagaglio da imbarcare in stiva o solo il bagaglio a mano?',
-        hint: 'Ho solo una valigia piccola come bagaglio a mano.',
+        reply: 'Thank you! Do you have a suitcase to check in, or just a carry-on bag?',
+        hint: 'I only have one small carry-on bag today.',
       },
       {
-        reply: 'Benissimo! Preferisce un posto finestrino o corridoio per questo volo?',
-        hint: 'Vorrei un posto finestrino, per favore.',
+        reply: 'Got it! Would you prefer a window seat or an aisle seat for this flight?',
+        hint: 'I would like a window seat, please.',
       },
       {
-        reply: 'Ecco la carta d’imbarco: il gate è il numero 12. Buon viaggio!',
-        hint: 'Grazie mille! Da che ora inizia l’imbarco?',
+        reply: 'Here is your boarding pass—your flight leaves from Gate 12. Have a safe flight!',
+        hint: 'Thank you! What time does boarding begin?',
       },
     ],
     intermediate: [
       {
-        reply: 'Buongiorno! Sta volando verso Roma o ha uno scalo intermedio?',
-        hint: 'Ho un volo diretto per Roma, parto tra due ore.',
+        reply: 'Good morning! Are you flying direct today, or do you have a layover?',
+        hint: 'I have a direct flight to London leaving in two hours.',
       },
       {
-        reply: 'Ottimo, il volo è perfettamente in orario. Vuole aggiungere una valigia in stiva?',
-        hint: 'Sì, vorrei imbarcare questa valigia e tenere lo zaino con me.',
+        reply: 'Great, your flight is right on schedule. Would you like to check any luggage?',
+        hint: 'Yes, I want to check this suitcase and keep my backpack with me.',
       },
       {
-        reply: 'Nessun problema, il peso rientra nel limite. Conosce già la strada per i controlli di sicurezza?',
-        hint: 'Sì, grazie! Quanto tempo ci vuole a piedi fino al gate?',
+        reply: 'No problem, the weight is within the limit. Do you know the way to security?',
+        hint: 'Yes, thanks! How long is the walk to the gate?',
       },
       {
-        reply: 'Circa dieci minuti dopo i controlli. Le auguro un ottimo volo!',
-        hint: 'Grazie per l’aiuto, buona giornata!',
+        reply: 'About ten minutes after security screening. Enjoy your flight!',
+        hint: 'Thanks for your help, have a wonderful day!',
       },
     ],
     advanced: [
       {
-        reply: 'Buongiorno, benvenuto al banco assistenza. Come posso aiutarla con la sua coincidenza?',
-        hint: 'Temo di perdere il secondo volo a causa di un ritardo alla partenza.',
+        reply: 'Good morning, welcome to the assistance desk. How can I help with your connection?',
+        hint: 'I am worried I might miss my second flight due to our departure delay.',
       },
       {
-        reply: 'Capisco la preoccupazione. Controllo subito se possiamo riproteggerla sul volo successivo.',
-        hint: 'Sarebbe molto utile, grazie. Il bagaglio verrà trasferito in automatico?',
+        reply: 'I understand your concern. Let me check if I can rebook you on the next flight right away.',
+        hint: 'That would help a lot, thank you. Will my luggage transfer automatically?',
       },
       {
-        reply: 'Sì, il bagaglio seguirà la nuova tratta senza doverlo ritirare. Preferisce un posto nelle prime file?',
-        hint: 'Sì, se è disponibile, mi aiuterebbe per uscire rapidamente.',
+        reply: 'Yes, your bag will follow the updated itinerary automatically. Would you prefer a seat near the front?',
+        hint: 'Yes, if available, that would help me disembark faster.',
       },
       {
-        reply: 'Confermato! Ecco la nuova carta d’imbarco e un voucher per il bar in attesa.',
-        hint: 'Apprezzo molto la sua disponibilità, grazie davvero!',
+        reply: 'Confirmed! Here is your new boarding pass along with a complimentary café voucher while you wait.',
+        hint: 'I really appreciate your help—thank you so much!',
       },
     ],
   },
   work: {
     beginner: [
       {
-        reply: 'Buongiorno collega! Come è andato il tuo fine settimana?',
-        hint: 'Molto bene, grazie! Mi sono riposato. E tu?',
+        reply: 'Good morning! How was your weekend?',
+        hint: 'It was great, thanks! I got some rest. How about yours?',
       },
       {
-        reply: 'Anch’io! Su quale progetto stai lavorando oggi in ufficio?',
-        hint: 'Oggi sto preparando il rapporto per la riunione.',
+        reply: 'Mine was good too! What project are you working on in the office today?',
+        hint: 'Today I am preparing the report for our meeting.',
       },
       {
-        reply: 'Perfetto! Hai bisogno di una mano o ti mando i file subito?',
-        hint: 'Se puoi mandarmi i file via email, sarebbe perfetto.',
+        reply: 'Nice! Do you need any help, or should I send you the files now?',
+        hint: 'Could you email me the files? That would be great.',
       },
       {
-        reply: 'Te li invio tra cinque minuti. Ci vediamo in riunione alle dieci!',
-        hint: 'Ricevuto, grazie! A tra poco.',
+        reply: 'Sending them in five minutes. See you in the meeting at ten!',
+        hint: 'Got it, thanks! Talk to you soon.',
       },
     ],
     intermediate: [
       {
-        reply: 'Ciao! Facciamo un rapido aggiornamento: a che punto siamo con il documento del cliente?',
-        hint: 'Siamo quasi pronti, devo solo controllare gli ultimi numeri.',
+        reply: 'Hey! Let us do a quick check-in: where do we stand on the client document?',
+        hint: 'We are almost ready—I just need to verify the final numbers.',
       },
       {
-        reply: 'Ottimo lavoro! Pensi che riusciremo a rispettare la scadenza di venerdì?',
-        hint: 'Sì, assolutamente. Domani pomeriggio possiamo fare il punto insieme.',
+        reply: 'Awesome work! Do you think we are on track to meet Friday’s deadline?',
+        hint: 'Yes, definitely. We can touch base tomorrow afternoon to finalize it.',
       },
       {
-        reply: 'Perfetto! C’è qualche criticità su cui dobbiamo allinearci prima?',
-        hint: 'Vorrei rivedere insieme la seconda parte della presentazione.',
+        reply: 'Perfect! Are there any blockers we should align on before then?',
+        hint: 'I would like to review the second half of the slides together.',
       },
       {
-        reply: 'Volentieri, blocchiamo quindici minuti oggi alle tre. Ti mando l’invito!',
-        hint: 'Perfetto, confermo subito la presenza.',
+        reply: 'Gladly—let us block fifteen minutes today at three. I will send the invite!',
+        hint: 'Sounds great, I will accept the calendar invite right away.',
       },
     ],
     advanced: [
       {
-        reply: 'Buongiorno! Prima di avviare il trimestre, allineiamoci sulle priorità strategiche del team.',
-        hint: 'D’accordo. Secondo me la priorità è sbloccare il collo di bottiglia tecnico.',
+        reply: 'Morning! Before kicking off the quarter, let us align on our team’s strategic priorities.',
+        hint: 'Agreed. In my view, clearing the technical bottleneck should come first.',
       },
       {
-        reply: 'Condivido pienamente. Realisticamente, quanto margine temporale stimi per completarlo?',
-        hint: 'Con risorse dedicate possiamo chiudere entro metà mese.',
+        reply: 'I completely agree. Realistically, what timeline do you estimate for wrapping it up?',
+        hint: 'With dedicated resources, we can close it out by mid-month.',
       },
       {
-        reply: 'Ottima stima. Hai già raccolto il riscontro degli stakeholder sulla bozza?',
-        hint: 'Sì, i feedback sono positivi ma chiedono maggiore chiarezza sui costi.',
+        reply: 'Solid estimate. Have you gathered stakeholder feedback on the initial draft yet?',
+        hint: 'Yes, feedback is positive overall, though they want clearer cost breakdowns.',
       },
       {
-        reply: 'Perfetto, aggiorniamo la matrice e torniamoci su giovedì con i dati definitivi.',
-        hint: 'Ricevuto, preparo la versione aggiornata per giovedì.',
+        reply: 'Got it—let us update the roadmap and circle back Thursday with the final numbers.',
+        hint: 'Sounds like a plan, I will prepare the revised version for Thursday.',
       },
     ],
   },
   doctor: {
     beginner: [
       {
-        reply: 'Buongiorno, si accomodi pure. Come si sente oggi?',
-        hint: 'Buongiorno dottore, ho mal di testa e un po’ di febbre.',
+        reply: 'Good morning, please have a seat. How are you feeling today?',
+        hint: 'Good morning doctor, I have a headache and a slight fever.',
       },
       {
-        reply: 'Capisco. Da quanti giorni ha questi sintomi?',
-        hint: 'È iniziato due giorni fa, soprattutto la sera.',
+        reply: 'I see. How many days have you had these symptoms?',
+        hint: 'It started two days ago, mostly in the evening.',
       },
       {
-        reply: 'Va bene, la controllo subito. Ha anche mal di gola o tosse?',
-        hint: 'Ho solo un leggero mal di gola e tanta stanchezza.',
+        reply: 'Okay, let me check right away. Do you also have a sore throat or a cough?',
+        hint: 'I just have a mild sore throat and feel tired.',
       },
       {
-        reply: 'Nulla di grave, è un po’ di raffreddore. Prenda questa medicina due volte al giorno dopo i pasti.',
-        hint: 'Grazie dottore, ora sono molto più tranquillo!',
+        reply: 'Nothing serious, just a mild cold. Take this medicine twice a day after meals.',
+        hint: 'Thank you doctor, I feel much more relieved now!',
       },
     ],
     intermediate: [
       {
-        reply: 'Buongiorno! Mi racconti pure qual è il disturbo principale di questi giorni.',
-        hint: 'Mi sento molto giù di forze e ho dolori muscolari da lunedì.',
+        reply: 'Good morning! Tell me what has been bothering you most over the past few days.',
+        hint: 'I have felt very drained and had muscle aches since Monday.',
       },
       {
-        reply: 'Ha misurato la temperatura o preso già qualche farmaco?',
-        hint: 'Avevo trentotto di febbre ieri sera e ho preso una tachipirina.',
+        reply: 'Have you checked your temperature or taken any medication already?',
+        hint: 'I had a mild fever last night and took one pain reliever.',
       },
       {
-        reply: 'Ha fatto bene. Ha qualche allergia nota ai medicinali?',
-        hint: 'No, nessuna allergia. Devo prendere le pastiglie a stomaco pieno?',
+        reply: 'Good call. Do you have any known allergies to medications?',
+        hint: 'No allergies at all. Should I take the tablets with food?',
       },
       {
-        reply: 'Sì, sempre dopo mangiato e beva molta acqua. Tra tre giorni dovrebbe stare già meglio!',
-        hint: 'Perfetto, seguirò tutte le indicazioni. Grazie!',
+        reply: 'Yes, always after eating, and drink plenty of water. You should feel much better in three days!',
+        hint: 'Understood, I will follow every instruction. Thank you!',
       },
     ],
     advanced: [
       {
-        reply: 'Buongiorno, si accomodi. In quali momenti della giornata nota che il fastidio si accentua?',
-        hint: 'Il fastidio tende ad accentuarsi verso sera, soprattutto dopo il lavoro.',
+        reply: 'Good morning, please come in. At what times of day do you notice the discomfort flaring up?',
+        hint: 'It tends to worsen in the evening, especially after work.',
       },
       {
-        reply: 'Interessante. Potrebbe essere legato allo stress oppure a una lieve allergia stagionale.',
-        hint: 'Lo sospettavo anch’io. Esiste un trattamento che non provochi sonnolenza diurna?',
+        reply: 'Interesting. It could be stress-related or triggered by mild seasonal allergies.',
+        hint: 'I suspected that too. Is there a treatment that will not cause drowsiness?',
       },
       {
-        reply: 'Certamente, possiamo scegliere un antistaminico di nuova generazione molto leggero.',
-        hint: 'Ottimo! Serve anche un’impegnativa per eventuali analisi approfondite?',
+        reply: 'Certainly—we can prescribe a gentle, non-drowsy second-generation antihistamine.',
+        hint: 'Great! Would I also need a referral if we decide on further tests?',
       },
       {
-        reply: 'Le preparo subito l’impegnativa per precauzione. Torni al controllo se i sintomi persistono.',
-        hint: 'La ringrazio molto per la chiarezza e l’attenzione.',
+        reply: 'I will prepare a referral just in case. Come back for a checkup if symptoms persist.',
+        hint: 'Thank you very much for explaining everything so clearly.',
       },
     ],
   },
   meeting: {
     beginner: [
       {
-        reply: 'Ciao! Piacere di conoscerti, io sono Marco! Tu come ti chiami?',
-        hint: 'Piacere! Mi chiamo Sara e sto imparando l’italiano.',
+        reply: 'Hi! Nice to meet you, I am Alex! What is your name?',
+        hint: 'Nice to meet you! My name is Sara and I am learning English.',
       },
       {
-        reply: 'Che bello, lo parli già benissimo! Di dove sei e abiti qui vicino?',
-        hint: 'Vengo dal Marocco e abito qui vicino da poco.',
+        reply: 'That is awesome—you already speak well! Where are you from?',
+        hint: 'I am from Morocco, and I live nearby.',
       },
       {
-        reply: 'Meraviglioso! Cosa ti piace fare di solito nel fine settimana?',
-        hint: 'Mi piace camminare al parco e prendere un caffè con gli amici.',
+        reply: 'Wonderful! What do you usually enjoy doing on weekends?',
+        hint: 'I like walking in the park and grabbing coffee with friends.',
       },
       {
-        reply: 'Anch’io adoro il caffè italiano! È stato un piacere parlare con te!',
-        hint: 'Anche per me! A presto, Marco!',
+        reply: 'I love coffee too! It was really great chatting with you today.',
+        hint: 'Same here! See you soon, Alex!',
       },
     ],
     intermediate: [
       {
-        reply: 'Ciao! Non ci siamo ancora presentati, sono Marco. Come conosci gli amici di questa festa?',
-        hint: 'Ciao Marco! Lavoro insieme a Luca nello stesso ufficio.',
+        reply: 'Hey! I do not think we have met yet—I am Alex. How do you know everyone here?',
+        hint: 'Hi Alex! I work in the same office as Sam.',
       },
       {
-        reply: 'Ma dai, Luca è un grande amico! Ti sei trasferito in questa città da molto tempo?',
-        hint: 'Solo da pochi mesi, sto ancora scoprendo i posti migliori qui in zona.',
+        reply: 'Oh nice, Sam is a great friend! Have you lived in this city for long?',
+        hint: 'Only a few months—I am still discovering the best spots around town.',
       },
       {
-        reply: 'Se vuoi posso consigliarti ottimi ristoranti tipici qui vicino. Che cucina preferisci?',
-        hint: 'Adoro la cucina mediterranea e le pizzerie tradizionali!',
+        reply: 'I can recommend some awesome local cafés nearby. What kind of food do you like?',
+        hint: 'I love Mediterranean food and cozy coffee shops!',
       },
       {
-        reply: 'Allora ti scrivo i miei tre posti preferiti! Dobbiamo restare in contatto!',
-        hint: 'Volentieri, prendiamoci un caffè la settimana prossima!',
+        reply: 'Let me share my top three favorite spots! We should definitely stay in touch.',
+        hint: 'Sounds great, let us grab coffee next week!',
       },
     ],
     advanced: [
       {
-        reply: 'Ciao! Piacere di fare due chiacchiere con te. Qual è stato il momento più bello della tua settimana?',
-        hint: 'Sicuramente una mostra fotografica che ho visitato ieri pomeriggio.',
+        reply: 'Hey! Great getting a chance to chat. What has been the highlight of your week so far?',
+        hint: 'Definitely a photography exhibition I visited yesterday afternoon.',
       },
       {
-        reply: 'Fantastico, adoro la fotografia! Come ti sei appassionato a questo mondo?',
-        hint: 'Ho iniziato viaggiando e cercando di raccontare le città attraverso i volti.',
+        reply: 'No way, I love photography too! How did you get into it?',
+        hint: 'I started while traveling and trying to capture cities through everyday portraits.',
       },
       {
-        reply: 'È un punto di vista davvero autentico! Sembra che abbiamo parecchie passioni in comune.',
-        hint: 'Vero! Sto cercando di allargare il giro e conoscere persone creative qui in città.',
+        reply: 'What an authentic perspective! Sounds like we share quite a few creative interests.',
+        hint: 'True! I have been hoping to meet more creative people around town.',
       },
       {
-        reply: 'Mi farebbe molto piacere: prendiamoci un caffè la settimana prossima per parlarne con calma!',
-        hint: 'Ottima idea! Ti lascio volentieri il mio contatto.',
+        reply: 'Count me in—let us grab coffee next week and swap travel stories!',
+        hint: 'Love that idea! Here is my contact info.',
       },
     ],
   },
@@ -577,56 +661,325 @@ const SCENARIO_TURNS: Record<ScenarioId, Record<ProficiencyLevel, TurnReply[]>> 
 function buildLocalCoachReply(
   scenarioId: ScenarioId,
   level: ProficiencyLevel,
-  history: Array<{ sender: 'user' | 'marco'; text: string }>,
+  history: Array<{ sender: 'user' | 'alex'; text: string }>,
   userMessage: string
 ): KeylessChatResult {
-  const analysis = analyzeItalianMessage(userMessage);
-  const lower = userMessage.toLowerCase();
+  const analysis = analyzeEnglishMessage(userMessage);
+  const lower = userMessage.toLowerCase().trim();
   const turns = SCENARIO_TURNS[scenarioId]?.[level] || SCENARIO_TURNS.conversation.beginner;
-  const marcoCount = history.filter((m) => m.sender === 'marco').length;
-  let selected = turns[marcoCount % turns.length];
+  const recentAlexTexts = new Set(
+    history.filter((m) => m.sender === 'alex').map((m) => m.text.trim())
+  );
 
-  if (/\bcaff[eè]\b|\bbar\b|\bpizza\b|\bpasta\b|\bcibo\b/.test(lower) && marcoCount > 0) {
+  const pickFresh = (candidates: TurnReply[]): TurnReply => {
+    const unused = candidates.find((c) => !recentAlexTexts.has(c.reply.trim()));
+    return unused || candidates[0];
+  };
+
+  let selected: TurnReply | null = null;
+
+  // 1. Direct language help / questions
+  if (/\b(how do you say|what does .* mean|what is the meaning|mean in english)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'Great question! In everyday English, keeping it simple and natural works best. Want to try putting that word into a short sentence?',
+        hint: 'Yes! Let me try writing a short example sentence.',
+      },
+      {
+        reply: 'Happy to help! You can also tap the Translate button on any message to see the exact meaning in your own language. Want another example?',
+        hint: 'Thanks Alex, now let me try using it myself!',
+      },
+    ]);
+  } else if (/\b(don't understand|do not understand|speak slower|slow down|repeat|too fast|difficult|help me)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'No problem at all—let us slow down! I will use shorter, simpler words. What do you enjoy doing every day?',
+        hint: 'Thanks! Every day I work and practice a little English.',
+      },
+      {
+        reply: 'Take your time—you are doing great! Would you like to practice with short, easy questions?',
+        hint: 'Yes please, short and simple sentences help me a lot.',
+      },
+    ]);
+  } else if (/\b(how are you|how's it going|how are things|how you doing|what's up|whats up)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'I am doing great, thanks for asking! Today has been really productive. How are you feeling and how is your day going?',
+        hint: 'I am doing well too, thanks! Today is a good day.',
+      },
+      {
+        reply: 'Everything is going awesome, thank you! I always enjoy practicing English with you. What have you done today so far?',
+        hint: 'Today I had coffee and now I am practicing English.',
+      },
+    ]);
+  } else if (/\b(who are you|where do you live|where are you from|what do you do|how old|about you|and you)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'I am Alex, your friendly English tutor! I love coffee, travel, and helping learners speak confidently. Which city do you live in right now?',
+        hint: 'I live in Casablanca, and I would love to travel more!',
+      },
+      {
+        reply: 'In my free time I enjoy cooking, listening to music, and reading. What hobbies make you happiest?',
+        hint: 'I also love music and spending time outdoors!',
+      },
+    ]);
+  } else if (/\bmy name is\b|\bi am ([A-Z][a-z]+)\b/.test(userMessage)) {
+    const nameMatch = userMessage.match(/(?:my name is|i'm|i am)\s+([A-Za-z'-]{2,20})/i);
+    const extractedName =
+      nameMatch && !/happy|tired|fine|good|great|sad|ready|learning|from|here/i.test(nameMatch[1])
+        ? nameMatch[1]
+        : '';
     selected = {
-      reply: 'Ottima scelta! La cucina e il caffè italiano sono unici. Tu cucini spesso a casa?',
-      hint: 'Sì, mi piace molto cucinare la pasta con gli amici!',
+      reply: extractedName
+        ? `Nice to meet you, ${extractedName}! What a great name. How long have you been learning English?`
+        : 'Nice to meet you! How long have you been practicing English?',
+      hint: 'Nice to meet you too! I have been learning English for a few months.',
     };
-  } else if (/\bpassaporto\b|\bbiglietto\b|\bvaligia\b|\bvolo\b/.test(lower) && scenarioId === 'airport') {
-    selected = {
-      reply: 'Perfetto, ho controllato tutto ed è in ordine. Preferisce un posto finestrino o corridoio?',
-      hint: 'Preferisco un posto vicino al finestrino, grazie!',
-    };
-  } else if (/\bmal di\b|\bfebbre\b|\btosse\b|\bgola\b|\bdolore\b/.test(lower) && scenarioId === 'doctor') {
-    selected = {
-      reply: 'Capisco bene. Da quanti giorni ha questi sintomi e ha già preso qualche medicina?',
-      hint: 'È iniziato due giorni fa e ho preso solo un po’ di paracetamolo.',
-    };
-  } else if (/\bmi chiamo\b|\bsono di\b|\bvengo da\b/.test(lower)) {
-    selected = {
-      reply: 'Che bel nome, piacere mio! Come ti trovi a praticare l’italiano finora?',
-      hint: 'Mi trovo benissimo, ogni giorno imparo parole nuove!',
-    };
-  } else if (/\bgrazie\b|\ba presto\b|\barrivederci\b/.test(lower)) {
-    selected = {
-      reply: 'Prego, è stato un vero piacere! Continua così, stai andando alla grande. Vuoi provare un altro argomento?',
-      hint: 'Grazie mille! Sì, proviamo un’altra situazione insieme.',
-    };
+  } else if (/\b(i am from|i'm from|i come from|i live in)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'Oh awesome, that is a wonderful place! Have you visited any English-speaking countries yet, or is there somewhere on your wish list?',
+        hint: 'I would love to visit London or New York next year!',
+      },
+    ]);
+  } else if (/\b(tired|exhausted|sleepy|stressed|bad|sad|sick)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'I hear you—we all have days like that! Make sure you get some rest soon. Did you have a busy day today?',
+        hint: 'Yes, it was a long day, so now I just want to relax.',
+      },
+      {
+        reply: 'Sorry to hear that! I hope you recharge soon. What usually helps you unwind after a tough day?',
+        hint: 'I usually drink warm tea and listen to calm music.',
+      },
+    ]);
+  } else if (/\b(happy|glad|excited|good|great|awesome|wonderful|fantastic|fine)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'That is great to hear! Keeping a positive mood makes speaking English even easier. What has been the best part of your day?',
+        hint: 'I caught up with friends and learned some new English words!',
+      },
+    ]);
+  } else if (/\b(coffee|tea|cafe|pizza|food|eat|drink|water|restaurant|dinner|lunch|breakfast|hungry|thirsty|cook)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'Delicious choice! Good food and coffee always start great conversations. What is your absolute favorite meal to eat or cook?',
+        hint: 'I love grilled chicken, fresh salads, and homemade pasta!',
+      },
+      {
+        reply: 'Now I am getting hungry too! Do you prefer grabbing coffee at a café or making it at home?',
+        hint: 'I prefer sitting at a cozy café with friends.',
+      },
+    ]);
+  } else if (/\b(weather|rain|sunny|hot|cold|time is it|what time)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'The weather feels really pleasant here today—great for a walk outside! Is it warm or cool where you are right now?',
+        hint: 'It is sunny and comfortable here today.',
+      },
+    ]);
+  } else if (
+    /\b(airport|passport|ticket|luggage|suitcase|flight|plane|train|station|hotel|room|vacation|trip|travel|london|new york|usa|uk)\b/.test(
+      lower
+    )
+  ) {
+    selected = pickFresh([
+      {
+        reply: 'Sounds like an exciting trip! Do you usually travel light with just a carry-on, or do you check a big suitcase?',
+        hint: 'I usually travel light with only a small carry-on bag.',
+      },
+      {
+        reply: 'Great destination! Have you checked your departure time and boarding gate number yet?',
+        hint: 'Yes, my flight departs at ten from Gate 12.',
+      },
+    ]);
+  } else if (/\b(headache|fever|cough|throat|pain|hurt|stomach|medicine|pharmacy|doctor|clinic|symptoms)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'I understand. How long have you had those symptoms, and have you taken any medicine yet?',
+        hint: 'It started last night, and I have not taken anything yet.',
+      },
+      {
+        reply: 'Be sure to drink plenty of water and rest. Should we practice what to say at the pharmacy next?',
+        hint: 'Yes, tell me how to ask for pain medicine politely.',
+      },
+    ]);
+  } else if (/\b(work|office|meeting|project|coworker|boss|email|job|study|school|university|exam)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'Sounds like you are staying focused! What is your biggest priority at work or school this week?',
+        hint: 'I need to finish a presentation for tomorrow’s meeting.',
+      },
+      {
+        reply: 'Great mindset! Good communication helps everything move faster. Do you enjoy collaborating with your team?',
+        hint: 'Yes, I love working with my team and learning new skills.',
+      },
+    ]);
+  } else if (/\b(music|movie|movies|film|sport|football|soccer|basketball|tennis|game|games|book|read|friends|family|home|weekend|gym|workout|exercise|run|running|swim)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'That sounds awesome—it is such a fun way to spend your time! How often do you usually do it?',
+        hint: 'I try to do it every week whenever I have free time.',
+      },
+      {
+        reply: 'I love that too! What is your favorite thing about it, or who do you usually enjoy it with?',
+        hint: 'I usually do it with my friends, and we always have a great time.',
+      },
+    ]);
+  } else if (/\b(car|cars|drive|driving|bus|taxi|bike|motorcycle|road|traffic)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'Getting around easily makes such a difference! Do you enjoy driving yourself, or do you prefer taking public transport?',
+        hint: 'I prefer driving when the traffic is not too bad.',
+      },
+    ]);
+  } else if (/\b(phone|computer|laptop|app|internet|website|tech|technology|ai|video|photo)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'Technology changes so fast nowadays! How do you use that the most in your daily routine?',
+        hint: 'I mostly use it for work, learning English, and messaging friends.',
+      },
+    ]);
+  } else if (/\b(shop|shopping|buy|bought|price|expensive|cheap|store|market|clothes|shoes)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'Nice! Do you enjoy shopping in local stores, or do you usually prefer ordering things online?',
+        hint: 'I like checking things out in person first before buying.',
+      },
+    ]);
+  } else if (/\b(english|practice|practicing|learn|learning|speak|speaking|word|grammar|pronunciation|accent)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'You are doing great with your English! Keep talking with me about whatever interests you—what would you like to talk about right now?',
+        hint: 'I want to talk about my daily life and practice real conversations.',
+      },
+    ]);
+  } else if (/\b(thank|thanks|see you|goodbye|bye|good night|goodnight)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'You are very welcome! It has been great talking with you—feel free to keep chatting anytime. What else is on your mind?',
+        hint: 'Thanks Alex! Let us keep talking for a few more minutes.',
+      },
+    ]);
+  } else if (/^(hi|hello|hey|good morning|good afternoon|good evening|salam)[\s!.,?]*$/i.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'Hey! So glad you are here. How is your day going, and what would you like to talk about?',
+        hint: 'Hi Alex! Things are going well—let us talk about my week.',
+      },
+    ]);
+  } else if (lower.includes('practice speaking english with you') && history.length === 0) {
+    selected = turns[0];
+  }
+
+  // Keep topic continuity from the immediately preceding turns when the learner gives a short/brand/follow-up answer
+  if (!selected && history.length > 0) {
+    const prevContext = history
+      .slice(-2)
+      .map((m) => m.text.toLowerCase())
+      .join(' ');
+    if (/\b(car|cars|toyota|honda|ford|bmw|mercedes|drive|driving|vehicle)\b/.test(`${lower} ${prevContext}`)) {
+      selected = pickFresh([
+        {
+          reply: 'Nice choice—reliability really matters! Have you test-driven one yet, or looked at specific features you want?',
+          hint: 'Not yet, I am comparing fuel efficiency and prices first.',
+        },
+        {
+          reply: 'That makes a lot of sense! Are you planning to buy it new or used?',
+          hint: 'I am leaning toward a reliable used model in good condition.',
+        },
+      ]);
+    } else if (/\b(food|eat|coffee|tea|dinner|lunch|breakfast|cook|cooking|restaurant|pizza)\b/.test(prevContext)) {
+      selected = pickFresh([
+        {
+          reply: 'Sounds tasty! Do you have it often, or is it more of a special treat?',
+          hint: 'I usually enjoy it on weekends with family or friends.',
+        },
+      ]);
+    } else if (/\b(work|office|job|meeting|project|study|school|exam)\b/.test(prevContext)) {
+      selected = pickFresh([
+        {
+          reply: 'Got it! How is that going for you so far—do you enjoy working on it?',
+          hint: 'Yes, it keeps me busy, and I am learning a lot.',
+        },
+      ]);
+    } else if (/\b(trip|travel|flight|airport|hotel|vacation|visit)\b/.test(prevContext)) {
+      selected = pickFresh([
+        {
+          reply: 'That sounds like a great plan! How many days are you hoping to stay?',
+          hint: 'Probably around a week so I have time to explore.',
+        },
+      ]);
+    } else if (/\b(sport|football|soccer|gym|workout|movie|music|book|game)\b/.test(prevContext)) {
+      selected = pickFresh([
+        {
+          reply: 'Nice! What do you enjoy most about it?',
+          hint: 'I love relaxing and having fun without checking my phone.',
+        },
+      ]);
+    }
+  }
+
+  if (!selected) {
+    const trailingStop = new Set([
+      'a', 'an', 'the', 'is', 'are', 'was', 'were', 'it', 'its', 'to', 'of',
+      'in', 'on', 'at', 'for', 'with', 'and', 'or', 'but', 'because', 'so', 'that', 'this', 'my',
+    ]);
+    const words = (analysis.correctedEnglish || userMessage)
+      .replace(/[.!?]+$/g, '')
+      .trim()
+      .split(/\s+/)
+      .slice(0, 6);
+    while (words.length > 2 && trailingStop.has(words[words.length - 1].toLowerCase())) {
+      words.pop();
+    }
+    const cleanSnippet = words.join(' ');
+    const isQuestion =
+      userMessage.trim().endsWith('?') ||
+      /^(what|why|how|when|where|who|can|could|do|did|is|are|will|would)\b/i.test(lower);
+    if (isQuestion) {
+      selected = pickFresh([
+        {
+          reply: `Good question! What made you curious about "${cleanSnippet}"?`,
+          hint: 'I was curious because it comes up a lot in everyday English.',
+        },
+        {
+          reply: 'That is a really thoughtful question! What is your own opinion on it?',
+          hint: 'I think it depends on the situation, to be honest.',
+        },
+      ]);
+    } else {
+      selected = pickFresh([
+        {
+          reply: `That makes total sense! Tell me a bit more—what do you like most about it?`,
+          hint: 'Well, the best part for me is how practical it is.',
+        },
+        {
+          reply: `I see what you mean! How did you get into "${cleanSnippet}"?`,
+          hint: 'Let me explain how it started for me.',
+        },
+        {
+          reply: 'Got it, thanks for sharing! What are you planning to do next with that?',
+          hint: 'Next, I want to take it one step at a time.',
+        },
+      ]);
+    }
   }
 
   return {
-    replyItalian: selected.reply,
+    replyEnglish: selected.reply,
     hasMistake: analysis.hasMistake,
-    correctedItalian: analysis.correctedItalian,
+    correctedEnglish: analysis.correctedEnglish,
     explanation: analysis.explanation,
     suggestedNextReply: selected.hint,
-    engineLabel: 'Tutor Senza Chiave',
+    engineLabel: 'Keyless English Coach',
   };
 }
 
 export async function generateKeylessChatReply(params: {
   scenarioId: ScenarioId;
   level: ProficiencyLevel;
-  history: Array<{ sender: 'user' | 'marco'; text: string }>;
+  history: Array<{ sender: 'user' | 'alex'; text: string }>;
   userMessage: string;
   targetLanguageName?: string;
 }): Promise<KeylessChatResult> {
@@ -645,161 +998,161 @@ const EXTRA_FREE_PHRASES: Record<ScenarioId, KeyPhrase[]> = {
   conversation: [
     {
       id: 'free-conv-1',
-      italian: 'Parliamo un po’ più piano, per favore.',
-      meaning: 'Puoi parlare leggermente più lentamente?',
-      usageNote: 'Utile per capire ogni parola senza stress.',
+      english: 'Could we speak a little slower, please?',
+      meaning: 'Please speak slightly more slowly so I can follow.',
+      usageNote: 'Polite way to keep the chat comfortable.',
     },
     {
       id: 'free-conv-2',
-      italian: 'Sto imparando l’italiano da qualche mese.',
-      meaning: 'Studio questa lingua da poco tempo.',
-      usageNote: 'Spiega subito il tuo livello con simpatia.',
+      english: 'I have been learning English for a few months.',
+      meaning: 'I started practicing English recently.',
+      usageNote: 'Sets expectations warmly right at the start.',
     },
     {
       id: 'free-conv-3',
-      italian: 'Come si dice questa parola in italiano?',
-      meaning: 'Qual è il termine italiano giusto?',
-      usageNote: 'Perfetta per arricchire il vocabolario dal vivo.',
+      english: 'How do you say this word in English?',
+      meaning: 'What is the right English expression for this?',
+      usageNote: 'Perfect for expanding your vocabulary live.',
     },
     {
       id: 'free-conv-4',
-      italian: 'Secondo me è una splendida idea.',
-      meaning: 'Penso proprio che sia una buona proposta.',
-      usageNote: 'Espressione naturale per mostrare entusiasmo.',
+      english: 'I think that is a wonderful idea.',
+      meaning: 'I really like what you just suggested.',
+      usageNote: 'Natural phrase to show agreement and warmth.',
     },
     {
       id: 'free-conv-5',
-      italian: 'Ci sentiamo molto presto!',
-      meaning: 'Parliamo di nuovo tra poco tempo!',
-      usageNote: 'Saluto amichevole e quotidiano.',
+      english: 'Talk to you again very soon!',
+      meaning: 'Let us chat again in the near future!',
+      usageNote: 'Friendly everyday goodbye.',
     },
   ],
   airport: [
     {
       id: 'free-air-1',
-      italian: 'Dove si trova il controllo passaporti?',
-      meaning: 'In che direzione vado per mostrare il passaporto?',
-      usageNote: 'Molto utile nei voli internazionali.',
+      english: 'Where is passport control?',
+      meaning: 'Which direction do I go to show my passport?',
+      usageNote: 'Essential at international terminals.',
     },
     {
       id: 'free-air-2',
-      italian: 'Posso portare questa borsa in cabina?',
-      meaning: 'È permesso tenerla come bagaglio a mano?',
-      usageNote: 'Chiedilo al banco prima di passare i varchi.',
+      english: 'Can I bring this bag into the cabin?',
+      meaning: 'Is this allowed as carry-on luggage?',
+      usageNote: 'Ask at check-in before heading through security.',
     },
     {
       id: 'free-air-3',
-      italian: 'Il gate d’imbarco è cambiato?',
-      meaning: 'L’uscita del volo è sempre la stessa?',
-      usageNote: 'Controlla sempre gli schermi vicino ai gate.',
+      english: 'Has the boarding gate changed?',
+      meaning: 'Is the flight still leaving from the same gate?',
+      usageNote: 'Always double-check departure boards near the gates.',
     },
     {
       id: 'free-air-4',
-      italian: 'Dove posso ritirare il mio bagaglio?',
-      meaning: 'Qual è il nastro valigie del mio volo?',
-      usageNote: 'Frase essenziale appena atterri.',
+      english: 'Where can I pick up my baggage?',
+      meaning: 'Which carousel has luggage from my flight?',
+      usageNote: 'Key question right after landing.',
     },
     {
       id: 'free-air-5',
-      italian: 'C’è un treno o un autobus per il centro?',
-      meaning: 'Qual è il mezzo più comodo per lasciare l’aeroporto?',
-      usageNote: 'Utile appena esci dagli arrivi.',
+      english: 'Is there a train or bus to the city center?',
+      meaning: 'What is the easiest transport from the airport?',
+      usageNote: 'Useful as soon as you exit arrivals.',
     },
   ],
   work: [
     {
       id: 'free-work-1',
-      italian: 'Possiamo organizzare una breve chiamata oggi?',
-      meaning: 'Hai tempo per sentirci velocemente al telefono o video?',
-      usageNote: 'Formula cortese e professionale.',
+      english: 'Can we hop on a quick call today?',
+      meaning: 'Do you have a few minutes for a short call?',
+      usageNote: 'Natural, friendly phrasing in modern workplaces.',
     },
     {
       id: 'free-work-2',
-      italian: 'Ti aggiorno appena ho novità.',
-      meaning: 'Appena so qualcosa in più ti scrivo subito.',
-      usageNote: 'Comunissima nelle email di lavoro.',
+      english: 'I will update you as soon as I hear back.',
+      meaning: 'Once I get news, I will message you right away.',
+      usageNote: 'Very common in professional emails and Slack.',
     },
     {
       id: 'free-work-3',
-      italian: 'Ho già inviato il documento revisionato.',
-      meaning: 'Il file corretto è già nella tua casella di posta.',
-      usageNote: 'Chiara e diretta per confermare un compito.',
+      english: 'I have already sent the revised document.',
+      meaning: 'The updated file is waiting in your inbox.',
+      usageNote: 'Clear confirmation that a task is complete.',
     },
     {
       id: 'free-work-4',
-      italian: 'Quali sono i prossimi passi da seguire?',
-      meaning: 'Che cosa facciamo adesso?',
-      usageNote: 'Ottima per chiudere una riunione con ordine.',
+      english: 'What are our next action items?',
+      meaning: 'What tasks should we focus on next?',
+      usageNote: 'Great way to wrap up a productive meeting.',
     },
     {
       id: 'free-work-5',
-      italian: 'Grazie mille per la collaborazione!',
-      meaning: 'Ti ringrazio per aver lavorato bene insieme.',
-      usageNote: 'Chiusura cordiale con colleghi e clienti.',
+      english: 'Thank you so much for your collaboration!',
+      meaning: 'I appreciate working together smoothly.',
+      usageNote: 'Warm closing with teammates and clients.',
     },
   ],
   doctor: [
     {
       id: 'free-doc-1',
-      italian: 'Vorrei prenotare una visita medica.',
-      meaning: 'Devo fissare un appuntamento con il dottore.',
-      usageNote: 'Usala al telefono o allo sportello.',
+      english: 'I would like to book a medical appointment.',
+      meaning: 'I need to schedule a visit with a doctor.',
+      usageNote: 'Use this over the phone or at reception.',
     },
     {
       id: 'free-doc-2',
-      italian: 'Ho bisogno di una ricetta medica.',
-      meaning: 'Mi serve la prescrizione per la farmacia.',
-      usageNote: 'Essenziale per molti farmaci in Italia.',
+      english: 'I need a prescription for this medication.',
+      meaning: 'I need a doctor’s note to buy this medicine.',
+      usageNote: 'Required for many pharmacy treatments.',
     },
     {
       id: 'free-doc-3',
-      italian: 'Ho dormito poco per colpa del dolore.',
-      meaning: 'Il fastidio non mi ha lasciato riposare bene.',
-      usageNote: 'Aiuta il medico a valutare l’intensità.',
+      english: 'I barely slept because of the pain.',
+      meaning: 'The discomfort kept me awake overnight.',
+      usageNote: 'Helps your doctor judge symptom severity.',
     },
     {
       id: 'free-doc-4',
-      italian: 'Posso continuare a fare sport?',
-      meaning: 'È sicuro allenarsi durante la cura?',
-      usageNote: 'Domanda pratica prima di uscire dallo studio.',
+      english: 'Is it safe to exercise while recovering?',
+      meaning: 'Can I keep working out during this treatment?',
+      usageNote: 'Smart question before leaving the clinic.',
     },
     {
       id: 'free-doc-5',
-      italian: 'Dove si trova la farmacia più vicina?',
-      meaning: 'Qual è la farmacia aperta qui intorno?',
-      usageNote: 'Utile subito dopo aver ricevuto la ricetta.',
+      english: 'Where is the nearest open pharmacy?',
+      meaning: 'Which pharmacy is closest and open right now?',
+      usageNote: 'Handy right after receiving a prescription.',
     },
   ],
   meeting: [
     {
       id: 'free-meet-1',
-      italian: 'Da quanto tempo vivi in questa città?',
-      meaning: 'Quanti mesi o anni hai passato qui?',
-      usageNote: 'Domanda naturale per conoscere qualcuno.',
+      english: 'How long have you lived in this city?',
+      meaning: 'How many months or years have you spent here?',
+      usageNote: 'Easy, warm question when meeting someone new.',
     },
     {
       id: 'free-meet-2',
-      italian: 'Ti va di prendere un caffè insieme?',
-      meaning: 'Vuoi andare al bar a bere qualcosa?',
-      usageNote: 'Invito semplice e tipicamente italiano.',
+      english: 'Would you like to grab a coffee together?',
+      meaning: 'Want to go to a café for a drink and chat?',
+      usageNote: 'Simple, friendly invitation.',
     },
     {
       id: 'free-meet-3',
-      italian: 'Che lavoro fai o cosa studi?',
-      meaning: 'Di cosa ti occupi nella vita?',
-      usageNote: 'Molto comune dopo le prime presentazioni.',
+      english: 'What do you do for work or study?',
+      meaning: 'What field are you in?',
+      usageNote: 'Natural follow-up after introductions.',
     },
     {
       id: 'free-meet-4',
-      italian: 'Anch’io amo tantissimo viaggiare!',
-      meaning: 'Abbiamo la stessa passione per i viaggi!',
-      usageNote: 'Crea subito sintonia durante il dialogo.',
+      english: 'I love traveling just as much as you do!',
+      meaning: 'We share the exact same passion for trips!',
+      usageNote: 'Instantly builds connection during small talk.',
     },
     {
       id: 'free-meet-5',
-      italian: 'Teniamoci in contatto su WhatsApp!',
-      meaning: 'Scriviamoci presto per rivederci!',
-      usageNote: 'Espressione modernissima e spontanea in Italia.',
+      english: 'Let us stay connected on WhatsApp!',
+      meaning: 'Let us message soon and keep in touch!',
+      usageNote: 'Modern, casual way to exchange contacts.',
     },
   ],
 };
@@ -817,7 +1170,7 @@ function normalizeIsoCode(code: string): string {
   const clean = code.toLowerCase().trim();
   if (clean === 'darija') return 'ar';
   if (clean === 'zgh') return 'fr';
-  if (clean === 'it-simple') return 'it';
+  if (clean === 'en-simple') return 'en';
   if (clean.startsWith('custom:')) return '';
   return clean.split('-')[0];
 }
@@ -827,7 +1180,7 @@ export async function translateKeylessText(
   targetLanguageCode: string,
   targetLanguageName: string
 ): Promise<string | null> {
-  const sourceLang = 'it';
+  const sourceLang = 'en';
   const isoTarget = normalizeIsoCode(targetLanguageCode);
   const trimmed = text.trim();
   if (!trimmed) return null;
@@ -860,7 +1213,7 @@ export async function translateKeylessText(
       const avail = LM.availability ? await LM.availability() : 'available';
       if (avail !== 'no' && avail !== 'unavailable') {
         const session = await LM.create({
-          systemPrompt: `Translate the Italian text into ${targetLanguageName}. Return ONLY the translated text without quotes.`,
+          systemPrompt: `Translate the English text into ${targetLanguageName}. Return ONLY the translated text without quotes.`,
         });
         try {
           const out = (await session.prompt(trimmed)).trim();
@@ -874,15 +1227,14 @@ export async function translateKeylessText(
     }
   }
 
-  // 3. Try Pollinations right away if off 46s window and target is dialect/custom (e.g. Darija)
+  // 3. Try Pollinations right away for dialect/custom (e.g. Darija) without any waiting limit
   const isSpecialDialect =
     targetLanguageCode === 'darija' ||
     targetLanguageCode === 'zgh' ||
-    targetLanguageCode === 'it-simple' ||
+    targetLanguageCode === 'en-simple' ||
     targetLanguageCode.startsWith('custom:');
 
-  if (isSpecialDialect && Date.now() - lastPollinationsCallAt >= POLLINATIONS_MIN_INTERVAL_MS) {
-    lastPollinationsCallAt = Date.now();
+  if (isSpecialDialect) {
     try {
       const res = await fetch('https://text.pollinations.ai/', {
         method: 'POST',
@@ -893,28 +1245,28 @@ export async function translateKeylessText(
           messages: [
             {
               role: 'system',
-              content: `Translate the Italian text naturally into ${targetLanguageName}. Return ONLY the translated text.`,
+              content: `Translate the English text naturally into ${targetLanguageName}. Return ONLY the translated text.`,
             },
             { role: 'user', content: trimmed },
           ],
         }),
       });
-      if (res.ok) {
-        const out = (await res.text()).trim();
-        if (out && !/free limit reached/i.test(out)) return out;
+      const out = (await res.text()).trim();
+      if (res.ok && out && !isPollinationsLimitBody(res.status, out)) {
+        return out;
       }
     } catch {
       // Fall through
     }
   }
 
-  // 4. Direct browser-side Google GTX (free, zero API key, zero 45s wait)
+  // 4. Direct browser-side Google GTX (free, zero API key, instant)
   if (isoTarget) {
-    if (isoTarget === sourceLang && targetLanguageCode !== 'it-simple') {
+    if (isoTarget === sourceLang && targetLanguageCode !== 'en-simple') {
       return trimmed;
     }
     try {
-      const gtxUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=it&tl=${encodeURIComponent(
+      const gtxUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${encodeURIComponent(
         isoTarget
       )}&dt=t&q=${encodeURIComponent(trimmed)}`;
       const res = await fetch(gtxUrl, { signal: AbortSignal.timeout(5000) });
@@ -932,11 +1284,11 @@ export async function translateKeylessText(
       // Fall through
     }
 
-    // 5. Direct browser-side MyMemory API (CORS *, zero 45s limit)
+    // 5. Direct browser-side MyMemory API (CORS *, instant)
     try {
       const mmUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(
         trimmed.slice(0, 480)
-      )}&langpair=${encodeURIComponent(`it|${isoTarget}`)}`;
+      )}&langpair=${encodeURIComponent(`en|${isoTarget}`)}`;
       const res = await fetch(mmUrl, { signal: AbortSignal.timeout(5000) });
       if (res.ok) {
         const data = (await res.json()) as {
@@ -953,74 +1305,30 @@ export async function translateKeylessText(
     }
   }
 
-  // 6. Pollinations fallback if off 46s rate window
-  const now = Date.now();
-  if (now - lastPollinationsCallAt >= POLLINATIONS_MIN_INTERVAL_MS) {
-    lastPollinationsCallAt = now;
-    try {
-      const res = await fetch('https://text.pollinations.ai/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(6500),
-        body: JSON.stringify({
-          model: 'openai',
-          messages: [
-            {
-              role: 'system',
-              content: `Translate the Italian text into ${targetLanguageName}. Return ONLY the translated text.`,
-            },
-            { role: 'user', content: trimmed },
-          ],
-        }),
-      });
-      if (res.ok) {
-        const out = (await res.text()).trim();
-        if (out && !/free limit reached/i.test(out)) return out;
-      }
-    } catch {
-      // Fall through
-    }
-  }
-
-  return null;
-}
-
-export async function waitAndTranslateWithPollinations(
-  text: string,
-  targetLanguageName: string
-): Promise<string | null> {
-  const trimmed = text.trim();
-  if (!trimmed) return null;
-
-  const elapsed = Date.now() - lastPollinationsCallAt;
-  if (elapsed < POLLINATIONS_MIN_INTERVAL_MS) {
-    const waitMs = Math.min(POLLINATIONS_MIN_INTERVAL_MS - elapsed + 350, 47_000);
-    await new Promise((resolve) => setTimeout(resolve, waitMs));
-  }
-
-  lastPollinationsCallAt = Date.now();
+  // 6. Pollinations fallback without any waiting limit
   try {
     const res = await fetch('https://text.pollinations.ai/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(7000),
+      signal: AbortSignal.timeout(6500),
       body: JSON.stringify({
         model: 'openai',
         messages: [
           {
             role: 'system',
-            content: `Translate the Italian text into ${targetLanguageName}. Return ONLY the translated text.`,
+            content: `Translate the English text into ${targetLanguageName}. Return ONLY the translated text.`,
           },
           { role: 'user', content: trimmed },
         ],
       }),
     });
-    if (res.ok) {
-      const out = (await res.text()).trim();
-      if (out && !/free limit reached/i.test(out)) return out;
+    const out = (await res.text()).trim();
+    if (res.ok && out && !isPollinationsLimitBody(res.status, out)) {
+      return out;
     }
   } catch {
-    // Ignore errors
+    // Fall through
   }
+
   return null;
 }

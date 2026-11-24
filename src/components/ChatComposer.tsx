@@ -115,11 +115,11 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
           ).webkitSpeechRecognition
         : undefined;
 
-    // Prefer built-in browser Web Speech API (100% free, zero API keys, instant Italian STT)
+    // Prefer built-in browser Web Speech API (free, zero API keys, instant English STT)
     if (SpeechRecCtor) {
       try {
         const rec = new SpeechRecCtor();
-        rec.lang = 'it-IT';
+        rec.lang = 'en-US';
         rec.interimResults = true;
         rec.continuous = false;
         rec.maxAlternatives = 1;
@@ -151,11 +151,11 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
           setIsRecording(false);
           setRecordingSeconds(0);
           if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-            setMicError('Consenti l’accesso al microfono nel browser per parlare.');
+            setMicError('Allow microphone access in your browser to speak.');
           } else if (event.error === 'no-speech') {
-            setMicError('Nessuna voce rilevata. Avvicinati al microfono e riprova.');
+            setMicError('No voice detected. Move closer to the microphone and try again.');
           } else if (event.error !== 'aborted') {
-            setMicError('Riconoscimento vocale non riuscito. Riprova o scrivi il messaggio.');
+            setMicError('Speech recognition failed. Try again or type your message.');
           }
         };
 
@@ -192,7 +192,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
     }
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setMicError('Il microfono non è supportato su questo browser.');
+      setMicError('Microphone recording is not supported in this browser.');
       return;
     }
 
@@ -227,7 +227,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
       }, 1000);
     } catch {
       cleanupStream();
-      setMicError('Consenti l’accesso al microfono nel browser per parlare.');
+      setMicError('Allow microphone access in your browser to speak.');
     }
   };
 
@@ -283,7 +283,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
       setRecordingSeconds(0);
 
       if (blob.size < 400) {
-        setMicError('Audio troppo breve. Prova a parlare più vicino al microfono.');
+        setMicError('Audio too short. Try speaking closer to your microphone.');
         return;
       }
 
@@ -296,7 +296,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             const idx = result.indexOf(',');
             resolve(idx >= 0 ? result.slice(idx + 1) : result);
           };
-          reader.onerror = () => reject(new Error('Errore lettura audio'));
+          reader.onerror = () => reject(new Error('Audio read error'));
           reader.readAsDataURL(blob);
         });
 
@@ -309,12 +309,12 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
 
         const data = (await response.json()) as { text?: string; error?: string };
         if (!response.ok) {
-          throw new Error(data.error || 'Trascrizione non riuscita');
+          throw new Error(data.error || 'Transcription failed');
         }
 
         const transcript = (data.text || '').trim();
         if (!transcript) {
-          setMicError('Nessuna voce rilevata. Avvicinati al microfono e riprova.');
+          setMicError('No speech detected. Move closer to the microphone and try again.');
         } else {
           const prefix = inputTextRef.current.trim();
           const messageToSend = prefix ? `${prefix} ${transcript}` : transcript;
@@ -323,7 +323,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
           onSendMessage(messageToSend);
         }
       } catch {
-        setMicError('Impossibile trascrivere la voce. Riprova.');
+        setMicError('Could not transcribe audio. Please try again.');
       } finally {
         setIsTranscribing(false);
       }
@@ -342,15 +342,15 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   };
 
   return (
-    <div className="bg-white/95 backdrop-blur-md border-t border-[#DCE4DD] px-2.5 sm:px-4 py-2 pb-safe shrink-0">
+    <div className="bg-white/95 backdrop-blur-md border-t border-[#D5DFEC] px-2.5 sm:px-4 py-2 pb-safe shrink-0">
       {/* Inline Hint Drawer */}
       {showHint && suggestedHint && (
-        <div className="mb-2 bg-[#F4F7F5] border border-[#0F5E4B]/20 rounded-2xl px-3.5 py-2.5 flex items-center justify-between gap-2 shadow-[0_1px_2px_rgba(17,28,24,0.05)]">
+        <div className="mb-2 bg-[#F6F8FC] border border-[#1B4D8E]/20 rounded-2xl px-3.5 py-2.5 flex items-center justify-between gap-2 shadow-[0_1px_2px_rgba(15,27,45,0.05)]">
           <div className="min-w-0">
-            <span className="text-[11px] font-semibold text-[#0F5E4B] block">
-              Risposta suggerita:
+            <span className="text-[11px] font-semibold text-[#1B4D8E] block">
+              Suggested reply:
             </span>
-            <p className="text-sm text-[#111C18] leading-snug break-words">
+            <p className="text-sm text-[#0F1B2D] leading-snug break-words">
               {suggestedHint}
             </p>
           </div>
@@ -361,9 +361,9 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
               setShowHint(false);
               inputRef.current?.focus();
             }}
-            className="px-3 py-1.5 rounded-xl bg-[#E8F4F0] text-[#0F5E4B] text-xs font-semibold whitespace-nowrap shrink-0 cursor-pointer hover:bg-[#D1EAE2]"
+            className="px-3 py-1.5 rounded-xl bg-[#EBF2FC] text-[#1B4D8E] text-xs font-semibold whitespace-nowrap shrink-0 cursor-pointer hover:bg-[#D8E7FA]"
           >
-            Usa
+            Use
           </button>
         </div>
       )}
@@ -377,18 +377,18 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             onClick={() => setMicError(null)}
             className="text-rose-700 font-semibold px-2 py-0.5 cursor-pointer"
           >
-            Chiudi
+            Dismiss
           </button>
         </div>
       )}
 
       {/* Active Voice Recording Bar vs Standard Composer */}
       {isRecording ? (
-        <div className="flex items-center justify-between gap-2 bg-[#F4F7F5] rounded-2xl px-3 py-1.5 min-h-[48px] border border-rose-300">
+        <div className="flex items-center justify-between gap-2 bg-[#F6F8FC] rounded-2xl px-3 py-1.5 min-h-[48px] border border-rose-300">
           <button
             type="button"
             onClick={cancelRecording}
-            aria-label="Annulla registrazione"
+            aria-label="Cancel recording"
             className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-xl text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
           >
             <Trash2 className="w-5 h-5" />
@@ -396,21 +396,21 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
 
           <div className="flex items-center gap-2 flex-1 justify-center">
             <Mic className="w-4 h-4 text-rose-600 shrink-0" />
-            <span className="text-sm font-semibold text-[#111C18] tabular-nums">
+            <span className="text-sm font-semibold text-[#0F1B2D] tabular-nums">
               {formatTimer(recordingSeconds)}
             </span>
-            <span className="text-xs text-[#4A5C55] whitespace-nowrap">
-              Parla in italiano
+            <span className="text-xs text-[#4E607A] whitespace-nowrap">
+              Speak in English
             </span>
           </div>
 
           <button
             type="button"
             onClick={finishAndTranscribe}
-            className="min-h-[44px] px-4 rounded-xl bg-[#0F5E4B] text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-[#0A4638] active:scale-[0.98] transition-all cursor-pointer whitespace-nowrap"
+            className="min-h-[44px] px-4 rounded-xl bg-[#1B4D8E] text-white text-xs font-semibold flex items-center gap-1.5 hover:bg-[#143B6E] active:scale-[0.98] transition-all cursor-pointer whitespace-nowrap"
           >
             <Send className="w-3.5 h-3.5" />
-            <span>Invia</span>
+            <span>Send</span>
           </button>
         </div>
       ) : (
@@ -419,12 +419,12 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             <button
               type="button"
               onClick={() => setShowHint((v) => !v)}
-              title="Risposta suggerita"
-              aria-label="Risposta suggerita"
+              title="Suggested reply"
+              aria-label="Suggested reply"
               className={`min-w-[44px] min-h-[44px] rounded-2xl flex items-center justify-center transition-colors shrink-0 cursor-pointer ${
                 showHint
-                  ? 'bg-[#E8F4F0] text-[#0F5E4B]'
-                  : 'text-[#4A5C55] hover:bg-[#EFF4F0]'
+                  ? 'bg-[#EBF2FC] text-[#1B4D8E]'
+                  : 'text-[#4E607A] hover:bg-[#EDF2F8]'
               }`}
             >
               <Lightbulb className="w-5 h-5" />
@@ -439,8 +439,8 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               disabled={isTranscribing}
-              placeholder={isTranscribing ? 'Invio voce' : 'Scrivi in italiano'}
-              className="w-full min-h-[44px] bg-[#F4F7F5] rounded-2xl px-4 py-2.5 text-[15px] text-[#111C18] placeholder:text-[#64766E] border border-[#DCE4DD] focus:outline-none focus:border-[#0F5E4B] focus:bg-white transition-colors"
+              placeholder={isTranscribing ? 'Sending audio' : 'Write in English'}
+              className="w-full min-h-[44px] bg-[#F6F8FC] rounded-2xl px-4 py-2.5 text-[15px] text-[#0F1B2D] placeholder:text-[#647690] border border-[#D5DFEC] focus:outline-none focus:border-[#1B4D8E] focus:bg-white transition-colors"
             />
           </div>
 
@@ -449,9 +449,9 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             type="button"
             onClick={startRecording}
             disabled={disabled || isTranscribing}
-            title="Parla con il microfono"
-            aria-label="Parla con il microfono"
-            className="min-w-[44px] min-h-[44px] rounded-2xl bg-[#F4F7F5] border border-[#DCE4DD] text-[#0F5E4B] hover:bg-[#E8F4F0] active:scale-[0.96] disabled:opacity-50 flex items-center justify-center transition-all shrink-0 cursor-pointer"
+            title="Speak using microphone"
+            aria-label="Speak using microphone"
+            className="min-w-[44px] min-h-[44px] rounded-2xl bg-[#F6F8FC] border border-[#D5DFEC] text-[#1B4D8E] hover:bg-[#EBF2FC] active:scale-[0.96] disabled:opacity-50 flex items-center justify-center transition-all shrink-0 cursor-pointer"
           >
             <Mic className="w-5 h-5" />
           </button>
@@ -460,9 +460,9 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
           <button
             type="submit"
             disabled={!inputText.trim() || disabled || isTranscribing}
-            title="Invia"
-            aria-label="Invia messaggio"
-            className="min-w-[44px] min-h-[44px] rounded-2xl bg-[#0F5E4B] text-white hover:bg-[#0A4638] active:scale-[0.96] disabled:bg-[#CBD5CE] disabled:cursor-not-allowed flex items-center justify-center transition-all shrink-0 cursor-pointer shadow-[0_1px_2px_rgba(15,94,75,0.2)]"
+            title="Send"
+            aria-label="Send message"
+            className="min-w-[44px] min-h-[44px] rounded-2xl bg-[#1B4D8E] text-white hover:bg-[#143B6E] active:scale-[0.96] disabled:bg-[#C7D3E3] disabled:cursor-not-allowed flex items-center justify-center transition-all shrink-0 cursor-pointer shadow-[0_1px_2px_rgba(27,77,142,0.2)]"
           >
             <Send className="w-5 h-5" />
           </button>

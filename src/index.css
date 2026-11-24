@@ -3,6 +3,7 @@
 @layer base {
   :root {
     --font-sans: "Plus Jakarta Sans", "IBM Plex Sans Arabic", -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-display: "Bricolage Grotesque", "Plus Jakarta Sans", sans-serif;
     --font-arabic: "IBM Plex Sans Arabic", "Plus Jakarta Sans", sans-serif;
   }
 
@@ -11,22 +12,26 @@
   #root {
     height: 100%;
     font-family: var(--font-sans);
-    background-color: #edf2ee;
-    color: #111c18;
+    background-color: #edf2f8;
+    color: #0f1b2d;
     -webkit-tap-highlight-color: transparent;
   }
+}
+
+.font-display {
+  font-family: var(--font-display);
 }
 
 .font-arabic {
   font-family: var(--font-arabic);
 }
 
-/* Subtle porcelain & Tuscan emerald dotted canvas */
+/* Crisp Oxford Slate & Cobalt dotted workspace canvas */
 .english-wallpaper {
-  background-color: #f6f8f6;
+  background-color: #f6f8fc;
   background-image:
-    radial-gradient(rgba(15, 94, 75, 0.055) 1px, transparent 1px),
-    radial-gradient(rgba(17, 28, 24, 0.03) 1px, transparent 1px);
+    radial-gradient(rgba(27, 77, 142, 0.065) 1px, transparent 1px),
+    radial-gradient(rgba(15, 27, 45, 0.03) 1px, transparent 1px);
   background-size: 22px 22px;
   background-position: 0 0, 11px 11px;
 }
@@ -42,12 +47,12 @@
 }
 
 .chat-scroll::-webkit-scrollbar-thumb {
-  background-color: rgba(17, 28, 24, 0.16);
+  background-color: rgba(15, 27, 45, 0.16);
   border-radius: 9999px;
 }
 
 .chat-scroll::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(17, 28, 24, 0.28);
+  background-color: rgba(15, 27, 45, 0.28);
 }
 
 /* Safe area padding for iOS/Android mobile browsers */

@@ -6,7 +6,6 @@ interface PlayOptions {
   text: string;
   level: ProficiencyLevel;
   slow?: boolean;
-  liteMode?: boolean;
 }
 
 function pcmBytesToWavBlob(pcmBytes: Uint8Array, sampleRate = 24000): Blob {
@@ -37,22 +36,22 @@ function pcmBytesToWavBlob(pcmBytes: Uint8Array, sampleRate = 24000): Blob {
   return new Blob([header, pcmBytes.buffer as ArrayBuffer], { type: 'audio/wav' });
 }
 
-function pickItalianVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
+function pickEnglishVoice(voices: SpeechSynthesisVoice[]): SpeechSynthesisVoice | null {
   if (!voices.length) return null;
-  const isItIt = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().replace('_', '-') === 'it-it';
-  const isIt = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().startsWith('it');
+  const isEnUs = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().replace('_', '-') === 'en-us';
+  const isEn = (v: SpeechSynthesisVoice) => v.lang.toLowerCase().startsWith('en');
 
   return (
-    voices.find((v) => isItIt(v) && /google|samsung|alice|federica|luca|paolo|natural|cosimo|elsa/i.test(v.name)) ||
-    voices.find((v) => isItIt(v)) ||
-    voices.find((v) => isIt(v) && /google|samsung|natural|italian/i.test(v.name)) ||
-    voices.find((v) => isIt(v)) ||
-    voices.find((v) => /italian/i.test(v.name)) ||
+    voices.find((v) => isEnUs(v) && /google|samantha|alex|daniel|natural|aria|jenny|guy/i.test(v.name)) ||
+    voices.find((v) => isEnUs(v)) ||
+    voices.find((v) => isEn(v) && /google|natural|english/i.test(v.name)) ||
+    voices.find((v) => isEn(v)) ||
+    voices.find((v) => /english/i.test(v.name)) ||
     null
   );
 }
 
-export function useSpeechAudio(onSlowNetwork?: () => void) {
+export function useSpeechAudio() {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [audioError, setAudioError] = useState<string | null>(null);
@@ -64,7 +63,6 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
   const cacheRef = useRef<Map<string, string>>(new Map());
   const speechTimerRef = useRef<number | null>(null);
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
-  const ttsCooldownUntilRef = useRef<number>(0);
 
   const stop = useCallback(() => {
     if (speechTimerRef.current) {
@@ -147,16 +145,16 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
       if (voices.length > 0) {
         voicesRef.current = voices;
       }
-      const italianVoice = pickItalianVoice(voicesRef.current);
+      const englishVoice = pickEnglishVoice(voicesRef.current);
 
       const utterance = new SpeechSynthesisUtterance(text);
-      if (italianVoice) {
-        utterance.voice = italianVoice;
-        utterance.lang = italianVoice.lang;
+      if (englishVoice) {
+        utterance.voice = englishVoice;
+        utterance.lang = englishVoice.lang;
       } else {
-        utterance.lang = 'it-IT';
+        utterance.lang = 'en-US';
       }
-      utterance.rate = slow ? 0.78 : 0.96;
+      utterance.rate = slow ? 0.86 : 1.03;
       utterance.onstart = () => setPlayingId(id);
       utterance.onend = () => setPlayingId((curr) => (curr === id ? null : curr));
       utterance.onerror = () => {
@@ -200,8 +198,69 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
     }
   }, []);
 
+  const playFreeMp3Audio = useCallback(
+    async (id: string, text: string, slow: boolean, cacheKey: string): Promise<boolean> => {
+      try {
+        const res = await fetch('/api/tts/free', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text, slow }),
+          signal: AbortSignal.timeout(5500),
+        });
+        if (!res.ok) return false;
+        const arrBuf = await res.arrayBuffer();
+        if (arrBuf.byteLength < 100) return false;
+
+        const mp3Blob = new Blob([arrBuf], { type: 'audio/mpeg' });
+        const blobUrl = URL.createObjectURL(mp3Blob);
+        cacheRef.current.set(cacheKey, blobUrl);
+
+        const audio = new Audio(blobUrl);
+        audio.playbackRate = slow ? 0.85 : 1.0;
+        audioRef.current = audio;
+        setPlayingId(id);
+        audio.onended = () => setPlayingId((curr) => (curr === id ? null : curr));
+        audio.onerror = () => setPlayingId((curr) => (curr === id ? null : curr));
+
+        try {
+          await audio.play();
+          return true;
+        } catch {
+          const AudioCtx =
+            window.AudioContext ||
+            (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+          if (!AudioCtx) return false;
+          if (!audioCtxRef.current || audioCtxRef.current.state === 'closed') {
+            audioCtxRef.current = new AudioCtx({ sampleRate: 24000 });
+          }
+          const ctx = audioCtxRef.current;
+          if (ctx.state === 'suspended') {
+            await ctx.resume().catch(() => {});
+          }
+          const decoded = await ctx.decodeAudioData(arrBuf.slice(0));
+          const src = ctx.createBufferSource();
+          src.buffer = decoded;
+          src.playbackRate.value = slow ? 0.85 : 1.0;
+          src.connect(ctx.destination);
+          activeSourcesRef.current.push(src);
+          src.onended = () => {
+            activeSourcesRef.current = activeSourcesRef.current.filter((s) => s !== src);
+            if (activeSourcesRef.current.length === 0) {
+              setPlayingId((curr) => (curr === id ? null : curr));
+            }
+          };
+          src.start(0);
+          return true;
+        }
+      } catch {
+        return false;
+      }
+    },
+    []
+  );
+
   const play = useCallback(
-    async ({ id, text, level, slow, liteMode }: PlayOptions) => {
+    async ({ id, text, level, slow }: PlayOptions) => {
       setAudioError(null);
 
       if (playingId === id) {
@@ -229,13 +288,7 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
         return;
       }
 
-      // 2. Local Italian browser speech when liteMode is active or TTS quota is cooling down
-      if (liteMode || Date.now() < ttsCooldownUntilRef.current) {
-        fallbackSpeak(id, text, useSlow || level === 'beginner');
-        return;
-      }
-
-      // 3. Progressive streaming PCM via AudioContext with 2.8s first-byte timeout
+      // 2. Fast automatic Cloud HD Audio (1.4s budget) -> instant Free English MP3 -> Browser SpeechSynthesis
       const controller = new AbortController();
       abortRef.current = controller;
       setLoadingId(id);
@@ -243,7 +296,7 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
       let firstByteTimer: number | null = window.setTimeout(() => {
         timedOut = true;
         controller.abort();
-      }, 2800);
+      }, 1400);
 
       try {
         const AudioCtx =
@@ -271,17 +324,6 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
           signal: controller.signal,
         });
 
-        if (response.status === 429) {
-          ttsCooldownUntilRef.current = Date.now() + 60_000;
-          onSlowNetwork?.();
-          throw new Error('TTS quota cooldown');
-        }
-
-        if (response.status >= 500) {
-          onSlowNetwork?.();
-          throw new Error('TTS unavailable');
-        }
-
         if (!response.ok || !response.body) {
           throw new Error('Streaming TTS failed');
         }
@@ -297,7 +339,7 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
           let readTimer: number | null = window.setTimeout(() => {
             timedOut = true;
             controller.abort();
-          }, 4000);
+          }, 4200);
           const { value, done } = await reader.read().finally(() => {
             if (readTimer !== null) {
               window.clearTimeout(readTimer);
@@ -392,13 +434,13 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
         }
         abortRef.current = null;
         setLoadingId(null);
-        if (timedOut) {
-          onSlowNetwork?.();
+        const playedFree = await playFreeMp3Audio(id, text, useSlow, cacheKey);
+        if (!playedFree) {
+          fallbackSpeak(id, text, useSlow);
         }
-        fallbackSpeak(id, text, useSlow || level === 'beginner');
       }
     },
-    [fallbackSpeak, onSlowNetwork, playingId, stop]
+    [fallbackSpeak, playFreeMp3Audio, playingId, stop]
   );
 
   return {
