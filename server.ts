@@ -472,7 +472,7 @@ function formatServerError(err: unknown, fallbackMsg: string): { status: number;
 
 const SCENARIO_CONTEXT: Record<string, string> = {
   conversation:
-    'Open everyday American English conversation on any topic the learner chooses. Keep the tone warm, natural, and engaging.',
+    'Open, deeply informed English conversation across every walk of life: natural sciences, technology, world cultures, religions and spirituality, history, philosophy, arts, health, economics, and everyday life.',
   airport:
     'At an international airport (check-in counter, TSA security, boarding gate, baggage claim). Act as a helpful travel partner or airline staff member.',
   work:
@@ -680,11 +680,12 @@ app.post('/api/chat/stream', async (req, res) => {
       ? `[TRANS]\nNatural translation of the reply into ${transLang}\n`
       : '';
 
-    const systemInstruction = `You are Alex, a friendly native American English tutor in "Learn English Talking".
+    const systemInstruction = `You are Alex, a friendly, widely-read native American English tutor in "Learn English Talking".
 Context: ${scenarioInfo}
 Level: ${levelInfo}
+You are knowledgeable and respectful across all walks of life and fields of human knowledge: natural sciences (physics, biology, chemistry, astronomy, medicine), technology & AI, world cultures, history, literature, arts, philosophy, psychology, economics, law, everyday life, and world religions (Islam, Christianity, Judaism, Buddhism, Hinduism, ethics — always accurate, respectful, and thoughtful).
 ALWAYS write your reply, correction, explanation, and hint strictly in natural English. Directly address whatever the learner actually asked or said.
-Reply immediately with 1 short sentence in natural English + 1 short relevant follow-up question (max 28 words total, no [REPLY] tag). Then append only:
+Reply immediately with 1-2 clear, informative sentences in natural English + 1 thoughtful follow-up question on the same topic (max 40 words total, no [REPLY] tag). Then append only:
 [MISTAKE]
 YES or NO (omit [CORRECTED] and [EXPLAIN] if NO)
 [CORRECTED]
@@ -883,11 +884,12 @@ app.post('/api/chat', async (req, res) => {
     const { scenarioInfo, levelInfo, prompt } = buildChatPrompts(scenarioId, level, history, userMessage);
     const transLang = targetLanguageName?.trim();
 
-    const systemInstruction = `You are Alex, a friendly native American English conversation tutor in "Learn English Talking".
+    const systemInstruction = `You are Alex, a friendly, widely-read native American English conversation tutor in "Learn English Talking".
 Context: ${scenarioInfo}
 Level: ${levelInfo}
+You are knowledgeable and respectful across all walks of life and human knowledge: sciences, technology, world cultures, history, philosophy, arts, economics, daily life, and world religions (Islam, Christianity, Judaism, Buddhism, Hinduism — always respectful, accurate, and insightful).
 ALWAYS write replyEnglish, correctedEnglish, explanation, and suggestedNextReply strictly in natural English. Answer whatever the learner actually said or asked.
-Reply immediately in natural English (1 short sentence + 1 short relevant question, max 28 words, in replyEnglish). Set hasMistake=true for real English grammar/spelling mistakes or non-English words, and provide correctedEnglish + 1 brief tip in simple English (max 15 words, in explanation). Always provide suggestedNextReply in natural English (max 12 words).${
+Reply immediately in natural English (1-2 clear, informative sentences + 1 thoughtful follow-up question on the same topic, max 40 words, in replyEnglish). Set hasMistake=true for real English grammar/spelling mistakes or non-English words, and provide correctedEnglish + 1 brief tip in simple English (max 15 words, in explanation). Always provide suggestedNextReply in natural English (max 12 words).${
       transLang ? ` Also provide replyTranslation of replyEnglish in ${transLang}.` : ''
     }`;
 
@@ -1428,6 +1430,88 @@ app.post('/api/translate', async (req, res) => {
       'Translation temporarily unavailable. Please try again.'
     );
     return res.status(status).json({ error: message });
+  }
+});
+
+// 6. Fast Multi-Field Encyclopedic Knowledge Lookup (Sciences, Religions, Cultures, History, Arts)
+const knowledgeCache = new Map<string, { title: string; fact: string }>();
+
+app.get('/api/knowledge', async (req, res) => {
+  try {
+    const rawQ = String(req.query.q || '').trim().slice(0, 160);
+    if (!rawQ) {
+      return res.json({ title: '', fact: '' });
+    }
+    const cacheKey = rawQ.toLowerCase();
+    const cached = knowledgeCache.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
+    const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
+      rawQ
+    )}&format=json&srlimit=1&utf8=1`;
+    const searchRes = await fetch(searchUrl, {
+      headers: { 'User-Agent': 'LearnEnglishTalking/1.0' },
+      signal: AbortSignal.timeout(1800),
+    });
+    if (!searchRes.ok) {
+      return res.json({ title: '', fact: '' });
+    }
+    const searchData = (await searchRes.json()) as {
+      query?: { search?: Array<{ title?: string }> };
+    };
+    const topTitle = searchData.query?.search?.[0]?.title?.trim();
+    if (!topTitle) {
+      return res.json({ title: '', fact: '' });
+    }
+
+    const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(
+      topTitle.replace(/\s+/g, '_')
+    )}`;
+    const sumRes = await fetch(summaryUrl, {
+      headers: { 'User-Agent': 'LearnEnglishTalking/1.0' },
+      signal: AbortSignal.timeout(1800),
+    });
+    if (!sumRes.ok) {
+      return res.json({ title: '', fact: '' });
+    }
+    const sumData = (await sumRes.json()) as {
+      type?: string;
+      title?: string;
+      extract?: string;
+    };
+    if (sumData.type === 'disambiguation' || !sumData.extract) {
+      return res.json({ title: '', fact: '' });
+    }
+
+    const sentences = sumData.extract
+      .replace(/\s+/g, ' ')
+      .trim()
+      .split(/(?<=[.!?])\s+/);
+    let conciseFact = sentences[0] || '';
+    if (conciseFact.length < 90 && sentences[1] && conciseFact.length + sentences[1].length + 1 <= 240) {
+      conciseFact = `${conciseFact} ${sentences[1]}`.trim();
+    }
+    if (conciseFact.length > 240) {
+      const clauses = conciseFact.split(/[,;]\s+/);
+      conciseFact = clauses[0] ? `${clauses[0].replace(/[.!?]+$/, '')}.` : conciseFact.slice(0, 237).replace(/\s+\S*$/, '') + '.';
+    }
+
+    const payload = {
+      title: sumData.title || topTitle,
+      fact: conciseFact,
+    };
+    if (payload.fact) {
+      if (knowledgeCache.size >= 250) {
+        const oldest = knowledgeCache.keys().next().value;
+        if (oldest !== undefined) knowledgeCache.delete(oldest);
+      }
+      knowledgeCache.set(cacheKey, payload);
+    }
+    return res.json(payload);
+  } catch {
+    return res.json({ title: '', fact: '' });
   }
 });
 

@@ -25,8 +25,8 @@ export const SCENARIOS: ScenarioMeta[] = [
   {
     id: 'conversation',
     title: 'Learn English Talking',
-    subtitle: 'Free chat and daily practice',
-    roleDescription: 'Practice natural English conversations on any topic you like with Alex.',
+    subtitle: 'Life, science, culture & faith',
+    roleDescription: 'Practice natural English with Alex on any topic in life: science, technology, world cultures, religions, history, philosophy, or daily topics.',
     accentBg: 'bg-[#EBF2FC]',
     accentText: 'text-[#1B4D8E]',
   },

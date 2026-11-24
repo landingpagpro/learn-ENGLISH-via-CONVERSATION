@@ -72,9 +72,10 @@ async function tryChromeBuiltInChat(
       if (status === 'no' || status === 'unavailable') return null;
     }
 
-    const systemPrompt = `You are Alex, a friendly native American English tutor. Scenario: ${scenarioId}. Level: ${level}.
+    const systemPrompt = `You are Alex, a friendly, widely-read native American English tutor. Scenario: ${scenarioId}. Level: ${level}.
+You are knowledgeable and respectful across every field of life and human knowledge: sciences, technology, world cultures, history, philosophy, arts, economics, daily life, and world religions (Islam, Christianity, Judaism, Buddhism, Hinduism — always accurate and respectful).
 Respond ONLY with valid JSON (no markdown) using these keys:
-replyEnglish (natural English, 1 short sentence + 1 short question directly answering the learner, max 28 words),
+replyEnglish (natural English, 1-2 informative sentences + 1 thoughtful question directly answering the learner on the same topic, max 40 words),
 hasMistake (boolean),
 correctedEnglish (corrected English sentence or empty string),
 explanation (1 short tip in simple English or empty string),
@@ -136,10 +137,11 @@ async function tryClientPollinationsChat(
         messages: [
           {
             role: 'system',
-            content: `You are Alex, a friendly native American English tutor in scenario "${scenarioId}" at level "${level}".
-CRITICAL RULE: Stay 100% focused on the EXACT topic, question, or situation the learner just brought up in their latest message (and conversation history). Answer their actual point directly. NEVER change the subject or jump to unrelated topics (like coffee, travel, or random cities) unless the learner mentioned them.
+            content: `You are Alex, a friendly, widely-read native American English tutor in scenario "${scenarioId}" at level "${level}".
+You are deeply knowledgeable and respectful across all walks of life and human knowledge: natural sciences (physics, biology, chemistry, astronomy, medicine), technology & AI, world cultures, traditions, history, literature, arts, philosophy, psychology, economics, law, daily life, and world religions (Islam, Christianity, Judaism, Buddhism, Hinduism, ethics — always accurate, respectful, and thoughtful).
+CRITICAL RULE: Stay 100% focused on the EXACT topic, question, or situation the learner just brought up in their latest message (and conversation history). Answer their actual point directly and accurately. NEVER change the subject unless the learner does.
 Respond ONLY with valid JSON containing these keys:
-- "replyEnglish": Alex's conversational reply directly responding to what the learner just said (1 short natural sentence + 1 follow-up question on the SAME topic, max 28 words; NEVER echo the learner's own sentence).
+- "replyEnglish": Alex's conversational reply directly responding to what the learner just said (1-2 clear, informative sentences + 1 thoughtful follow-up question on the SAME topic, max 40 words; NEVER echo the learner's own sentence).
 - "hasMistake": boolean (true if the learner made a real English grammar/spelling mistake or used a non-English word).
 - "correctedEnglish": corrected version of the learner's sentence (or "" if hasMistake is false).
 - "explanation": 1 brief tip in simple English explaining the fix (or "" if hasMistake is false).
@@ -658,11 +660,95 @@ const SCENARIO_TURNS: Record<ScenarioId, Record<ProficiencyLevel, TurnReply[]>> 
   },
 };
 
+interface EncyclopedicFact {
+  title: string;
+  fact: string;
+}
+
+function extractKnowledgeQuery(message: string): string {
+  const cleaned = message
+    .replace(/[.!?]+$/g, '')
+    .replace(
+      /^(what is|what are|who is|who was|who were|tell me about|explain|can you explain|do you know about|what do you know about|define|meaning of|let us talk about|let's talk about|i want to talk about|how does|why does|why is)\s+/i,
+      ''
+    )
+    .replace(/^(the|a|an)\s+/i, '')
+    .trim();
+  return cleaned.split(/\s+/).slice(0, 6).join(' ');
+}
+
+async function fetchEncyclopedicKnowledge(userMessage: string): Promise<EncyclopedicFact | null> {
+  const trimmed = userMessage.trim();
+  if (!trimmed || trimmed.length < 4) return null;
+  if (/^(hi|hello|hey|good morning|good afternoon|good evening|thanks|thank you|bye|yes|no|ok|okay)[\s!.,?]*$/i.test(trimmed)) {
+    return null;
+  }
+  const query = extractKnowledgeQuery(trimmed);
+  if (!query || query.length < 3) return null;
+
+  // 1. Try local backend /api/knowledge proxy when running inside browser
+  if (typeof window !== 'undefined' && window.location?.origin?.startsWith('http')) {
+    try {
+      const res = await fetch(`/api/knowledge?q=${encodeURIComponent(query)}`, {
+        signal: AbortSignal.timeout(1900),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { title?: string; fact?: string };
+        if (data.fact && data.title) {
+          return { title: data.title, fact: data.fact };
+        }
+      }
+    } catch {
+      // Fall through to direct Wikipedia CORS lookup
+    }
+  }
+
+  // 2. Direct Wikipedia Search + Summary API (CORS origin=*)
+  try {
+    const searchUrl = `https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(
+      query
+    )}&format=json&srlimit=1&origin=*`;
+    const searchRes = await fetch(searchUrl, { signal: AbortSignal.timeout(2000) });
+    if (!searchRes.ok) return null;
+    const searchData = (await searchRes.json()) as {
+      query?: { search?: Array<{ title?: string }> };
+    };
+    const topTitle = searchData.query?.search?.[0]?.title?.trim();
+    if (!topTitle) return null;
+
+    const summaryUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(
+      topTitle.replace(/\s+/g, '_')
+    )}`;
+    const sumRes = await fetch(summaryUrl, { signal: AbortSignal.timeout(2000) });
+    if (!sumRes.ok) return null;
+    const sumData = (await sumRes.json()) as {
+      type?: string;
+      title?: string;
+      extract?: string;
+    };
+    if (sumData.type === 'disambiguation' || !sumData.extract) return null;
+
+    const sentences = sumData.extract.replace(/\s+/g, ' ').trim().split(/(?<=[.!?])\s+/);
+    let fact = sentences[0] || '';
+    if (fact.length < 90 && sentences[1] && fact.length + sentences[1].length + 1 <= 240) {
+      fact = `${fact} ${sentences[1]}`.trim();
+    }
+    if (fact.length > 240) {
+      const clauses = fact.split(/[,;]\s+/);
+      fact = clauses[0] ? `${clauses[0].replace(/[.!?]+$/, '')}.` : fact.slice(0, 237).replace(/\s+\S*$/, '') + '.';
+    }
+    return fact ? { title: sumData.title || topTitle, fact } : null;
+  } catch {
+    return null;
+  }
+}
+
 function buildLocalCoachReply(
   scenarioId: ScenarioId,
   level: ProficiencyLevel,
   history: Array<{ sender: 'user' | 'alex'; text: string }>,
-  userMessage: string
+  userMessage: string,
+  encyclopedicFact?: EncyclopedicFact | null
 ): KeylessChatResult {
   const analysis = analyzeEnglishMessage(userMessage);
   const lower = userMessage.toLowerCase().trim();
@@ -678,8 +764,23 @@ function buildLocalCoachReply(
 
   let selected: TurnReply | null = null;
 
+  const isSpecificFactualQuery =
+    /^(what|who|explain|define|tell me about|how does|why does|why is)\b/i.test(lower) ||
+    /\b(pillars of|history of|theory of)\b/i.test(lower);
+
+  if (
+    isSpecificFactualQuery &&
+    encyclopedicFact?.fact &&
+    !/\b(how are you|who are you|where are you from|what do you do|what time)\b/i.test(lower)
+  ) {
+    selected = {
+      reply: `${encyclopedicFact.fact} What interests you most about ${encyclopedicFact.title}?`,
+      hint: `I find ${encyclopedicFact.title} really fascinating—can we talk more about it?`,
+    };
+  }
+
   // 1. Direct language help / questions
-  if (/\b(how do you say|what does .* mean|what is the meaning|mean in english)\b/.test(lower)) {
+  if (!selected && /\b(how do you say|what does .* mean|what is the meaning|mean in english)\b/.test(lower)) {
     selected = pickFresh([
       {
         reply: 'Great question! In everyday English, keeping it simple and natural works best. Want to try putting that word into a short sentence?',
@@ -833,11 +934,68 @@ function buildLocalCoachReply(
         hint: 'I prefer driving when the traffic is not too bad.',
       },
     ]);
-  } else if (/\b(phone|computer|laptop|app|internet|website|tech|technology|ai|video|photo)\b/.test(lower)) {
+  } else if (/\b(islam|muslim|quran|ramadan|eid|mosque|prophet|hadith|halal|fasting|zakat|prayer|pray)\b/.test(lower)) {
     selected = pickFresh([
       {
-        reply: 'Technology changes so fast nowadays! How do you use that the most in your daily routine?',
-        hint: 'I mostly use it for work, learning English, and messaging friends.',
+        reply: 'Islam emphasizes compassion, honesty, daily prayer, charity, and lifelong learning—values that resonate deeply across communities worldwide. Which aspect or tradition would you like to discuss in English?',
+        hint: 'I would like to talk about the meaning of Ramadan and community spirit.',
+      },
+      {
+        reply: 'Faith and spiritual traditions bring people together through gratitude, reflection, and kindness. How do you enjoy celebrating special religious occasions with your family?',
+        hint: 'During Eid, we gather with family, share meals, and help people in need.',
+      },
+    ]);
+  } else if (/\b(religion|religions|faith|christian|christianity|bible|jesus|jewish|judaism|torah|buddhism|buddhist|hindu|hinduism|god|spiritual|spirituality|interfaith)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'World religions share timeless principles like mercy, integrity, and caring for neighbors, while each tradition carries rich history and wisdom. What topic in faith or comparative religion interests you most?',
+        hint: 'I find it fascinating how different faiths share values like peace and charity.',
+      },
+    ]);
+  } else if (/\b(science|physics|quantum|relativity|gravity|chemistry|atom|molecule|biology|dna|evolution|cell|space|universe|astronomy|galaxy|planet|planets|black hole|sun|moon|earth|climate|environment|math|mathematics)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'Science helps us uncover how nature works, from tiny atoms and DNA all the way to distant galaxies! Which scientific discovery or mystery fascinates you the most?',
+        hint: 'I love learning about space, physics, and how the universe began.',
+      },
+      {
+        reply: 'Understanding biology, physics, and climate science shapes our whole future. Do you enjoy reading or watching documentaries about scientific discoveries?',
+        hint: 'Yes, I love science documentaries because they explain complex ideas simply.',
+      },
+    ]);
+  } else if (/\b(culture|cultures|tradition|traditions|heritage|history|historical|civilization|morocco|moroccan|arab|amazigh|africa|asia|europe|museum|festival|customs|architecture)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'Exploring world cultures, history, and traditions opens a window into how societies grew through art, food, and hospitality. What part of your culture or history are you proudest to share?',
+        hint: 'I love sharing our warm hospitality, traditional cuisine, and rich history.',
+      },
+    ]);
+  } else if (/\b(philosophy|philosopher|stoicism|ethics|wisdom|meaning of life|psychology|mind|mindset|mental|behavior|society|justice|law|politics|education)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'Philosophy and psychology help us reflect on wisdom, ethics, and how we make sense of life and society. What thinker or big question has made you pause and reflect lately?',
+        hint: 'I have been thinking about how mindset and habits shape our happiness.',
+      },
+    ]);
+  } else if (/\b(art|arts|painting|poetry|poem|literature|novel|cinema|theater|photography|calligraphy|architecture|sculpture)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'Art, literature, and poetry capture human emotion across generations and languages in ways nothing else can. What kind of books, art, or cinema inspire you most?',
+        hint: 'I really enjoy thoughtful films and classic stories with strong characters.',
+      },
+    ]);
+  } else if (/\b(economy|economics|finance|business|startup|entrepreneur|market|money|invest|investing|trade|leadership|career)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'Economics and entrepreneurship shape everyday opportunities, innovation, and global trade. Are you interested in building a business, investing, or learning business English?',
+        hint: 'I want to improve my business English and learn more about startups.',
+      },
+    ]);
+  } else if (/\b(phone|computer|laptop|app|internet|website|tech|technology|ai|artificial intelligence|robot|coding|programming|software|energy)\b/.test(lower)) {
+    selected = pickFresh([
+      {
+        reply: 'Technology and AI are transforming science, medicine, education, and daily communication faster than ever! How do you see technology changing your field?',
+        hint: 'It helps me work faster and learn new skills every single day.',
       },
     ]);
   } else if (/\b(shop|shopping|buy|bought|price|expensive|cheap|store|market|clothes|shoes)\b/.test(lower)) {
@@ -850,8 +1008,8 @@ function buildLocalCoachReply(
   } else if (/\b(english|practice|practicing|learn|learning|speak|speaking|word|grammar|pronunciation|accent)\b/.test(lower)) {
     selected = pickFresh([
       {
-        reply: 'You are doing great with your English! Keep talking with me about whatever interests you—what would you like to talk about right now?',
-        hint: 'I want to talk about my daily life and practice real conversations.',
+        reply: 'You are doing great with your English! Feel free to talk with me about science, culture, faith, history, or daily life—what would you like to explore right now?',
+        hint: 'Let us talk about world cultures and everyday life in English!',
       },
     ]);
   } else if (/\b(thank|thanks|see you|goodbye|bye|good night|goodnight)\b/.test(lower)) {
@@ -864,12 +1022,20 @@ function buildLocalCoachReply(
   } else if (/^(hi|hello|hey|good morning|good afternoon|good evening|salam)[\s!.,?]*$/i.test(lower)) {
     selected = pickFresh([
       {
-        reply: 'Hey! So glad you are here. How is your day going, and what would you like to talk about?',
-        hint: 'Hi Alex! Things are going well—let us talk about my week.',
+        reply: 'Hey! So glad you are here. We can talk about anything—daily life, science, culture, or faith. What is on your mind today?',
+        hint: 'Hi Alex! Everything is good—let us talk about something interesting.',
       },
     ]);
   } else if (lower.includes('practice speaking english with you') && history.length === 0) {
     selected = turns[0];
+  }
+
+  // Prefer live encyclopedic knowledge if available and no specific personal-intent handler matched above
+  if (!selected && encyclopedicFact?.fact) {
+    selected = {
+      reply: `${encyclopedicFact.fact} What interests you most about ${encyclopedicFact.title}?`,
+      hint: `I find ${encyclopedicFact.title} really fascinating—can we talk more about it?`,
+    };
   }
 
   // Keep topic continuity from the immediately preceding turns when the learner gives a short/brand/follow-up answer
@@ -988,10 +1154,13 @@ export async function generateKeylessChatReply(params: {
   const chromeRes = await tryChromeBuiltInChat(scenarioId, level, history, userMessage, targetLanguageName);
   if (chromeRes) return chromeRes;
 
-  const pollRes = await tryClientPollinationsChat(scenarioId, level, history, userMessage, targetLanguageName);
+  const [pollRes, encyclopedicFact] = await Promise.all([
+    tryClientPollinationsChat(scenarioId, level, history, userMessage, targetLanguageName),
+    fetchEncyclopedicKnowledge(userMessage),
+  ]);
   if (pollRes) return pollRes;
 
-  return buildLocalCoachReply(scenarioId, level, history, userMessage);
+  return buildLocalCoachReply(scenarioId, level, history, userMessage, encyclopedicFact);
 }
 
 const EXTRA_FREE_PHRASES: Record<ScenarioId, KeyPhrase[]> = {
