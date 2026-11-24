@@ -1,10 +1,35 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Lightbulb, Mic, Send, Trash2 } from 'lucide-react';
 
+interface BrowserSpeechRecognitionEvent {
+  resultIndex: number;
+  results: {
+    length: number;
+    [idx: number]: {
+      isFinal: boolean;
+      [altIdx: number]: { transcript: string };
+    };
+  };
+}
+
+interface BrowserSpeechRecognition {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  maxAlternatives: number;
+  onresult: ((event: BrowserSpeechRecognitionEvent) => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+}
+
 interface ChatComposerProps {
   inputText: string;
   setInputText: (val: string) => void;
   disabled: boolean;
+  keylessMode?: boolean;
   suggestedHint?: string;
   onSendMessage: (text: string) => void;
   onUnlockAudio?: () => void;
@@ -14,6 +39,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   inputText,
   setInputText,
   disabled,
+  keylessMode = false,
   suggestedHint,
   onSendMessage,
   onUnlockAudio,
@@ -25,6 +51,9 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   const [micError, setMicError] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const speechRecRef = useRef<BrowserSpeechRecognition | null>(null);
+  const speechTranscriptRef = useRef('');
+  const speechCanceledRef = useRef(false);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -38,6 +67,13 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   useEffect(() => {
     return () => {
       if (timerRef.current) window.clearInterval(timerRef.current);
+      if (speechRecRef.current) {
+        try {
+          speechRecRef.current.abort();
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((t) => t.stop());
       }
@@ -64,6 +100,104 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
 
   const startRecording = async () => {
     setMicError(null);
+    onUnlockAudio?.();
+
+    const SpeechRecCtor =
+      typeof window !== 'undefined'
+        ? (
+            window as unknown as {
+              SpeechRecognition?: new () => BrowserSpeechRecognition;
+              webkitSpeechRecognition?: new () => BrowserSpeechRecognition;
+            }
+          ).SpeechRecognition ||
+          (
+            window as unknown as {
+              webkitSpeechRecognition?: new () => BrowserSpeechRecognition;
+            }
+          ).webkitSpeechRecognition
+        : undefined;
+
+    // Prefer built-in browser Web Speech API (100% free, zero API keys, instant Italian STT)
+    if (SpeechRecCtor) {
+      try {
+        const rec = new SpeechRecCtor();
+        rec.lang = 'it-IT';
+        rec.interimResults = true;
+        rec.continuous = false;
+        rec.maxAlternatives = 1;
+        speechTranscriptRef.current = '';
+        speechCanceledRef.current = false;
+        speechRecRef.current = rec;
+
+        setIsRecording(true);
+        setRecordingSeconds(0);
+        timerRef.current = window.setInterval(() => {
+          setRecordingSeconds((s) => s + 1);
+        }, 1000);
+
+        rec.onresult = (event: BrowserSpeechRecognitionEvent) => {
+          let collected = '';
+          for (let i = 0; i < event.results.length; i++) {
+            collected += event.results[i][0]?.transcript || '';
+          }
+          speechTranscriptRef.current = collected.trim();
+        };
+
+        rec.onerror = (event: { error: string }) => {
+          if (speechCanceledRef.current) return;
+          if (timerRef.current) {
+            window.clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
+          speechRecRef.current = null;
+          setIsRecording(false);
+          setRecordingSeconds(0);
+          if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+            setMicError('Consenti l’accesso al microfono nel browser per parlare.');
+          } else if (event.error === 'no-speech') {
+            setMicError('Nessuna voce rilevata. Avvicinati al microfono e riprova.');
+          } else if (event.error !== 'aborted') {
+            setMicError('Riconoscimento vocale non riuscito. Riprova o scrivi il messaggio.');
+          }
+        };
+
+        rec.onend = () => {
+          if (timerRef.current) {
+            window.clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
+          speechRecRef.current = null;
+          setIsRecording(false);
+          setRecordingSeconds(0);
+          if (speechCanceledRef.current) return;
+
+          const transcript = speechTranscriptRef.current.trim();
+          if (transcript) {
+            const prefix = inputTextRef.current.trim();
+            const messageToSend = prefix ? `${prefix} ${transcript}` : transcript;
+            setShowHint(false);
+            setMicError(null);
+            onSendMessage(messageToSend);
+          }
+        };
+
+        rec.start();
+        return;
+      } catch {
+        speechRecRef.current = null;
+        if (timerRef.current) {
+          window.clearInterval(timerRef.current);
+          timerRef.current = null;
+        }
+        setIsRecording(false);
+      }
+    }
+
+    if (keylessMode) {
+      setMicError('Il riconoscimento vocale gratuito non è supportato su questo browser. Scrivi il messaggio.');
+      return;
+    }
+
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setMicError('Il microfono non è supportato su questo browser.');
       return;
@@ -105,6 +239,23 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   };
 
   const cancelRecording = () => {
+    if (speechRecRef.current) {
+      speechCanceledRef.current = true;
+      try {
+        speechRecRef.current.abort();
+      } catch {
+        // Ignore
+      }
+      speechRecRef.current = null;
+      if (timerRef.current) {
+        window.clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      setIsRecording(false);
+      setRecordingSeconds(0);
+      return;
+    }
+
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.onstop = null;
       mediaRecorderRef.current.stop();
@@ -116,6 +267,16 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   };
 
   const finishAndTranscribe = () => {
+    if (speechRecRef.current) {
+      onUnlockAudio?.();
+      try {
+        speechRecRef.current.stop();
+      } catch {
+        cancelRecording();
+      }
+      return;
+    }
+
     const recorder = mediaRecorderRef.current;
     if (!recorder) return;
     onUnlockAudio?.();

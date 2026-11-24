@@ -9,13 +9,52 @@ import { Sidebar } from './components/Sidebar';
 import { TranslationLanguage } from './data/languages';
 import { APP_LOGO_URL, INITIAL_PHRASES, LEVELS, SCENARIOS } from './data/scenarios';
 import { useSpeechAudio } from './hooks/useSpeechAudio';
+import {
+  generateKeylessChatReply,
+  getNextFreeKeylessPhrases,
+  translateKeylessText,
+} from './utils/freeKeylessTutor';
 import { ChatMessage, ConversationThread, ProficiencyLevel, ScenarioId } from './types';
 
 const PHRASES_KEY = 'le_it_parlando_phrases_v3';
 const AUTOSPEAK_KEY = 'le_it_parlando_autospeak_v3';
-const LITEMODE_KEY = 'le_it_parlando_litemode_v3';
+const LITEMODE_KEY = 'le_it_parlando_litemode_v4';
+const KEYLESS_MODE_KEY = 'le_it_parlando_keyless_v1';
 const TRANSLANG_KEY = 'le_it_parlando_trans_lang_v3';
+const SAVED_LINKS_KEY = 'le_it_parlando_saved_links_v1';
 const MAX_MESSAGES_PER_THREAD = 30;
+
+function persistActiveHostLinks(serverLinks?: { freeUrl?: string | null; domainUrl?: string | null }) {
+  try {
+    const existingRaw = localStorage.getItem(SAVED_LINKS_KEY);
+    const existing = existingRaw ? (JSON.parse(existingRaw) as { freeUrl?: string; domainUrl?: string }) : {};
+    const origin = window.location.origin;
+    const host = window.location.hostname.toLowerCase();
+    const isFree =
+      host.endsWith('.onrender.com') ||
+      host.endsWith('.vercel.app') ||
+      host.endsWith('.run.app') ||
+      host.endsWith('.netlify.app') ||
+      host.endsWith('.railway.app') ||
+      host.endsWith('.fly.dev');
+    const isCustomDomain =
+      Boolean(host) &&
+      host !== 'localhost' &&
+      host !== '127.0.0.1' &&
+      !/^\d+\.\d+\.\d+\.\d+$/.test(host) &&
+      !isFree &&
+      host.includes('.');
+
+    const next = {
+      freeUrl: serverLinks?.freeUrl || (isFree ? origin : existing.freeUrl) || null,
+      domainUrl: serverLinks?.domainUrl || (isCustomDomain ? origin : existing.domainUrl) || null,
+      updatedAt: Date.now(),
+    };
+    localStorage.setItem(SAVED_LINKS_KEY, JSON.stringify(next));
+  } catch {
+    // Ignore storage errors
+  }
+}
 
 function formatTimeNow(): string {
   const now = new Date();
@@ -50,7 +89,7 @@ export default function App() {
   const [mobileView, setMobileView] = useState<'list' | 'chat'>('chat');
   const [phrasesDrawerOpen, setPhrasesDrawerOpen] = useState(false);
 
-  // Clear legacy storage keys on startup & keep Render instance warm while tab is visible
+  // Clear legacy storage keys on startup, auto-save free/domain links & keep Render instance warm
   useEffect(() => {
     try {
       [
@@ -92,10 +131,21 @@ export default function App() {
     } catch {
       // Ignore storage errors
     }
-    fetch('/api/health').catch(() => {});
+    persistActiveHostLinks();
+    const syncHealthAndLinks = () => {
+      fetch('/api/health')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data: { links?: { freeUrl?: string | null; domainUrl?: string | null } } | null) => {
+          if (data?.links) {
+            persistActiveHostLinks(data.links);
+          }
+        })
+        .catch(() => {});
+    };
+    syncHealthAndLinks();
     const warmTimer = window.setInterval(() => {
       if (document.visibilityState === 'visible') {
-        fetch('/api/health').catch(() => {});
+        syncHealthAndLinks();
       }
     }, 240000);
     return () => window.clearInterval(warmTimer);
@@ -146,7 +196,16 @@ export default function App() {
     } catch {
       // Ignore detection errors
     }
-    return false;
+    return true;
+  });
+  const [keylessMode, setKeylessMode] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem(KEYLESS_MODE_KEY);
+      if (saved !== null) return saved === 'true';
+    } catch {
+      // Ignore detection errors
+    }
+    return true;
   });
 
   const [selectedLanguage, setSelectedLanguage] = useState<TranslationLanguage | null>(() => {
@@ -186,6 +245,7 @@ export default function App() {
 
   const autoSpeakRef = useRef(autoSpeak);
   const liteModeRef = useRef(liteMode);
+  const keylessModeRef = useRef(keylessMode);
   const selectedLangRef = useRef<TranslationLanguage | null>(selectedLanguage);
 
   useEffect(() => {
@@ -218,6 +278,15 @@ export default function App() {
       // Ignore storage errors
     }
   }, [liteMode]);
+
+  useEffect(() => {
+    keylessModeRef.current = keylessMode;
+    try {
+      localStorage.setItem(KEYLESS_MODE_KEY, String(keylessMode));
+    } catch {
+      // Ignore storage errors
+    }
+  }, [keylessMode]);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const { loadingId, playingId, audioError, play: rawPlay, stop, unlockAudio } = useSpeechAudio();
@@ -293,14 +362,16 @@ export default function App() {
   }, [activeLevel, activeScenario, stop, threadKey]);
 
   const handleSendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, forceKeyless = false) => {
       setChatError(null);
       setFailedMessage(null);
       setInputText('');
 
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      const useKeyless = forceKeyless || keylessModeRef.current;
+
+      if (!useKeyless && typeof navigator !== 'undefined' && !navigator.onLine) {
         setFailedMessage(text);
-        setChatError('Sembri offline. Riconnettiti a internet e tocca Riprova.');
+        setChatError('Sembri offline. Riconnettiti a internet o passa alla modalità gratuita.');
         return;
       }
 
@@ -337,8 +408,72 @@ export default function App() {
       const replyMsgId = `reply-${Date.now()}`;
       let autoSpoken = false;
       let winnerLocked = false;
+      let streamHasActivity = false;
       let replyCompleteReceived = false;
       let hardStopped = false;
+
+      if (useKeyless) {
+        try {
+          const result = await generateKeylessChatReply({
+            scenarioId: activeScenario,
+            level: activeLevel,
+            history: historyForRequest.slice(-4).map((m) => ({
+              sender: m.sender,
+              text: m.text,
+            })),
+            userMessage: text,
+            targetLanguageName: selectedLangRef.current?.name,
+          });
+          setIsTyping(false);
+          if (result.replyItalian && autoSpeakRef.current) {
+            play({
+              id: `msg-${replyMsgId}`,
+              text: result.replyItalian,
+              level: activeLevel,
+              slow: false,
+            });
+          }
+          setThreads((prev) => {
+            const latest = prev[threadKey] || currentThread;
+            const langCode = selectedLangRef.current?.code;
+            const updatedMessages: ChatMessage[] = [
+              ...latest.messages.map((m) =>
+                m.id === userMsgId && result.hasMistake && result.correctedItalian
+                  ? {
+                      ...m,
+                      correction: {
+                        correctedItalian: result.correctedItalian,
+                        explanation: result.explanation || '',
+                      },
+                    }
+                  : m
+              ),
+              {
+                id: replyMsgId,
+                sender: 'marco',
+                text: result.replyItalian,
+                translations:
+                  langCode && result.replyTranslation
+                    ? { [langCode]: result.replyTranslation }
+                    : undefined,
+                timestamp: formatTimeNow(),
+                suggestedNextReply: result.suggestedNextReply,
+              },
+            ];
+            return {
+              ...prev,
+              [threadKey]: {
+                ...latest,
+                messages: updatedMessages.slice(-MAX_MESSAGES_PER_THREAD),
+                lastUpdated: Date.now(),
+              },
+            };
+          });
+        } finally {
+          setIsTyping(false);
+        }
+        return;
+      }
 
       const streamController = new AbortController();
       const fallbackController = new AbortController();
@@ -457,10 +592,10 @@ export default function App() {
         streamController.abort();
         fallbackController.abort();
         setIsTyping(false);
-      }, 28000);
+      }, 34000);
 
       const sendStreamRequest = async (): Promise<void> => {
-        const timer = window.setTimeout(() => streamController.abort(), 14000);
+        const timer = window.setTimeout(() => streamController.abort(), 22000);
         try {
           const res = await fetch('/api/chat/stream', {
             method: 'POST',
@@ -512,12 +647,15 @@ export default function App() {
                 if (winnerLocked) break;
 
                 if (evt.type === 'reply_delta' && evt.delta) {
+                  streamHasActivity = true;
                   streamedReply += evt.delta;
                   updateStreamedReplyText(streamedReply);
                 } else if (evt.type === 'reply' && evt.replyItalian) {
+                  streamHasActivity = true;
                   streamedReply = evt.replyItalian;
                   updateStreamedReplyText(streamedReply);
                 } else if (evt.type === 'reply_complete' && evt.replyItalian) {
+                  streamHasActivity = true;
                   replyCompleteReceived = true;
                   streamedReply = evt.replyItalian;
                   updateStreamedReplyText(streamedReply);
@@ -531,6 +669,7 @@ export default function App() {
                     });
                   }
                 } else if (evt.type === 'done') {
+                  streamHasActivity = true;
                   completed = true;
                   replyCompleteReceived = true;
                   fallbackController.abort();
@@ -544,7 +683,10 @@ export default function App() {
                   });
                 } else if (evt.type === 'error') {
                   const err = new Error(evt.error || 'Errore di connessione') as Error & { noRetry?: boolean };
-                  if (evt.status && evt.status >= 400 && evt.status < 500 && evt.status !== 408 && evt.status !== 429) {
+                  if (
+                    evt.status &&
+                    (evt.status === 429 || (evt.status >= 400 && evt.status < 500 && evt.status !== 408))
+                  ) {
                     err.noRetry = true;
                   }
                   throw err;
@@ -563,7 +705,7 @@ export default function App() {
 
       const sendChatRequest = async (attempt = 0): Promise<void> => {
         const controller = attempt === 0 ? fallbackController : new AbortController();
-        const timer = window.setTimeout(() => controller.abort(), 14000);
+        const timer = window.setTimeout(() => controller.abort(), 22000);
         try {
           const res = await fetch('/api/chat', {
             method: 'POST',
@@ -582,7 +724,7 @@ export default function App() {
           if (!res.ok || !data?.replyItalian) {
             const msg = data?.error || (res.status >= 500 ? 'Timeout temporaneo del server. Tocca Riprova.' : 'Errore di connessione');
             const err = new Error(msg) as Error & { noRetry?: boolean };
-            if (res.status >= 400 && res.status < 500 && res.status !== 408 && res.status !== 429) {
+            if (res.status === 429 || (res.status >= 400 && res.status < 500 && res.status !== 408)) {
               err.noRetry = true;
             }
             throw err;
@@ -593,13 +735,13 @@ export default function App() {
           }
         } catch (err: unknown) {
           if (
-            attempt < 2 &&
+            attempt < 1 &&
             !winnerLocked &&
             !hardStopped &&
             !(err instanceof Error && (err as Error & { noRetry?: boolean }).noRetry) &&
             (typeof navigator === 'undefined' || navigator.onLine)
           ) {
-            await new Promise((resolve) => window.setTimeout(resolve, 450 * (attempt + 1)));
+            await new Promise((resolve) => window.setTimeout(resolve, 600));
             if (!winnerLocked && !hardStopped) {
               return sendChatRequest(attempt + 1);
             }
@@ -610,8 +752,7 @@ export default function App() {
         }
       };
 
-      // Launch SSE stream immediately, and if full reply hasn't arrived within 1000ms
-      // (e.g. proxy buffering or mid-stream stall), race /api/chat in parallel.
+      // Launch SSE stream alone; only fall back to /api/chat if the stream stalls completely with 0 tokens for 9s
       let fallbackPromise: Promise<void> | null = null;
       const startFallbackOnce = () => {
         if (!fallbackPromise && !winnerLocked && !hardStopped) {
@@ -621,10 +762,10 @@ export default function App() {
       };
 
       const parallelRaceTimer = window.setTimeout(() => {
-        if (!replyCompleteReceived && !winnerLocked && !hardStopped) {
+        if (!streamHasActivity && !replyCompleteReceived && !winnerLocked && !hardStopped) {
           startFallbackOnce()?.catch(() => {});
         }
-      }, 1000);
+      }, 12000);
 
       try {
         try {
@@ -679,6 +820,31 @@ export default function App() {
   const handleRefreshPhrases = useCallback(async () => {
     setIsGeneratingPhrases(true);
     setChatError(null);
+    const applyFreeRotation = () => {
+      const currentIds = currentThread.phrases.map((p) => p.id);
+      const nextExtra = getNextFreeKeylessPhrases(activeScenario, currentIds);
+      const nextSet =
+        nextExtra.length > 0
+          ? nextExtra
+          : INITIAL_PHRASES[activeScenario][activeLevel].map((p) => ({ ...p, memorized: false }));
+      setThreads((prev) => {
+        const thread = prev[threadKey] || currentThread;
+        return {
+          ...prev,
+          [threadKey]: {
+            ...thread,
+            phrases: nextSet,
+          },
+        };
+      });
+    };
+
+    if (keylessModeRef.current) {
+      applyFreeRotation();
+      setIsGeneratingPhrases(false);
+      return;
+    }
+
     try {
       const response = await fetch('/api/phrases', {
         method: 'POST',
@@ -713,9 +879,8 @@ export default function App() {
           },
         };
       });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Impossibile aggiornare le frasi.';
-      setChatError(msg);
+    } catch {
+      applyFreeRotation();
     } finally {
       setIsGeneratingPhrases(false);
     }
@@ -732,7 +897,37 @@ export default function App() {
       const lang = overrideLang || selectedLangRef.current;
       if (!lang) return;
       setTranslatingIds((prev) => ({ ...prev, [messageId]: true }));
+      const saveTranslation = (translated: string) => {
+        setThreads((prev) => {
+          const thread = prev[threadKey] || currentThread;
+          return {
+            ...prev,
+            [threadKey]: {
+              ...thread,
+              messages: thread.messages.map((m) =>
+                m.id === messageId
+                  ? {
+                      ...m,
+                      translations: { ...(m.translations || {}), [lang.code]: translated },
+                    }
+                  : m
+              ),
+            },
+          };
+        });
+      };
+
       try {
+        if (keylessModeRef.current) {
+          const keylessTrans = await translateKeylessText(text, lang.code, lang.name);
+          if (keylessTrans) {
+            saveTranslation(keylessTrans);
+            return;
+          }
+          setChatError('Traduzione istantanea gratuita non disponibile per questa frase. Attendi 45s o usa Cloud.');
+          return;
+        }
+
         const response = await fetch('/api/translate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -746,25 +941,14 @@ export default function App() {
         if (!response.ok || !data.translation) {
           throw new Error(data.error || 'Traduzione non riuscita');
         }
-        setThreads((prev) => {
-          const thread = prev[threadKey] || currentThread;
-          return {
-            ...prev,
-            [threadKey]: {
-              ...thread,
-              messages: thread.messages.map((m) =>
-                m.id === messageId
-                  ? {
-                      ...m,
-                      translations: { ...(m.translations || {}), [lang.code]: data.translation! },
-                    }
-                  : m
-              ),
-            },
-          };
-        });
+        saveTranslation(data.translation);
       } catch {
-        setChatError('Traduzione non riuscita. Riprova.');
+        const fallbackTrans = await translateKeylessText(text, lang.code, lang.name);
+        if (fallbackTrans) {
+          saveTranslation(fallbackTrans);
+        } else {
+          setChatError('Traduzione non riuscita. Riprova.');
+        }
       } finally {
         setTranslatingIds((prev) => {
           const next = { ...prev };
@@ -818,6 +1002,7 @@ export default function App() {
           isTyping={isTyping}
           autoSpeak={autoSpeak}
           liteMode={liteMode}
+          keylessMode={keylessMode}
           memorizedCount={memorizedCount}
           totalPhrases={currentThread.phrases.length}
           onBackToScenarios={() => setMobileView('list')}
@@ -834,6 +1019,10 @@ export default function App() {
             });
           }}
           onToggleLiteMode={() => setLiteMode((prev) => !prev)}
+          onToggleKeylessMode={() => {
+            setChatError(null);
+            setKeylessMode((prev) => !prev);
+          }}
           onResetChat={handleResetChat}
         />
 
@@ -946,13 +1135,13 @@ export default function App() {
             />
           ))}
 
-          {/* Offline / API Error Notice with Retry */}
+          {/* Offline / API Error Notice with Retry & Switch to Free Keyless Mode */}
           {(!isOnline || chatError || audioError) && (
             <div className="flex justify-center">
-              <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl px-4 py-2 text-xs max-w-md text-center flex items-center justify-center gap-2.5 flex-wrap">
+              <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl px-4 py-2 text-xs max-w-md text-center flex items-center justify-center gap-2 flex-wrap">
                 <span>
                   {!isOnline
-                    ? 'Sembri offline. In attesa di connessione'
+                    ? 'Sembri offline. Passa a Gratis per continuare senza internet'
                     : chatError || audioError}
                 </span>
                 {failedMessage && isOnline && (
@@ -962,6 +1151,23 @@ export default function App() {
                     className="px-2.5 py-1 rounded-lg bg-rose-700 text-white font-semibold hover:bg-rose-800 transition-colors cursor-pointer"
                   >
                     Riprova
+                  </button>
+                )}
+                {!keylessMode && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const retryText = failedMessage;
+                      setKeylessMode(true);
+                      setChatError(null);
+                      setFailedMessage(null);
+                      if (retryText) {
+                        handleSendMessage(retryText, true);
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-[#0F5E4B] text-white font-semibold hover:bg-[#0A4638] transition-colors cursor-pointer"
+                  >
+                    Usa Gratis (Senza Chiave)
                   </button>
                 )}
                 {isOnline && (
@@ -989,6 +1195,7 @@ export default function App() {
           inputText={inputText}
           setInputText={setInputText}
           disabled={isTyping}
+          keylessMode={keylessMode}
           suggestedHint={latestPartnerMessage?.suggestedNextReply}
           onSendMessage={handleSendMessage}
           onUnlockAudio={() => {

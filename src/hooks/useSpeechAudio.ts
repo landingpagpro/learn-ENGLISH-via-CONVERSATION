@@ -64,6 +64,7 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
   const cacheRef = useRef<Map<string, string>>(new Map());
   const speechTimerRef = useRef<number | null>(null);
   const voicesRef = useRef<SpeechSynthesisVoice[]>([]);
+  const ttsCooldownUntilRef = useRef<number>(0);
 
   const stop = useCallback(() => {
     if (speechTimerRef.current) {
@@ -228,8 +229,8 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
         return;
       }
 
-      // 2. Local English browser speech when liteMode is active
-      if (liteMode) {
+      // 2. Local Italian browser speech when liteMode is active or TTS quota is cooling down
+      if (liteMode || Date.now() < ttsCooldownUntilRef.current) {
         fallbackSpeak(id, text, useSlow || level === 'beginner');
         return;
       }
@@ -268,7 +269,13 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
           signal: controller.signal,
         });
 
-        if (response.status === 429 || response.status >= 500) {
+        if (response.status === 429) {
+          ttsCooldownUntilRef.current = Date.now() + 60_000;
+          onSlowNetwork?.();
+          throw new Error('TTS quota cooldown');
+        }
+
+        if (response.status >= 500) {
           onSlowNetwork?.();
           throw new Error('TTS unavailable');
         }
