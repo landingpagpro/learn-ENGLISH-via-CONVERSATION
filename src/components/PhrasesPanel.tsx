@@ -74,7 +74,7 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
           disabled={isGenerating}
           className="min-h-[36px] px-3 py-1.5 rounded-xl bg-[#E8F4F0] text-[#0F5E4B] border border-[#0F5E4B]/20 hover:bg-[#D1EAE2] disabled:opacity-60 text-xs font-semibold flex items-center gap-1.5 transition-colors whitespace-nowrap shrink-0 cursor-pointer"
         >
-          <RefreshCw className={`w-3.5 h-3.5 ${isGenerating ? 'animate-pulse' : ''}`} />
+          <RefreshCw className="w-3.5 h-3.5" />
           <span>Nuove Frasi</span>
         </button>
       </div>
@@ -143,7 +143,7 @@ export const PhrasesPanel: React.FC<PhrasesPanelProps> = ({
                   }`}
                 >
                   {isLoading ? (
-                    <Volume2 className="w-3.5 h-3.5 text-[#0F5E4B] animate-pulse" />
+                    <Volume2 className="w-3.5 h-3.5 text-[#0F5E4B]" />
                   ) : isPlaying ? (
                     <Square className="w-3 h-3 fill-current" />
                   ) : (

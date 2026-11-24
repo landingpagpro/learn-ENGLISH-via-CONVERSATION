@@ -132,7 +132,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
             >
               {isTranslating && !activeTranslation ? (
                 <span dir="ltr" className="inline-flex items-center gap-1.5 text-xs text-[#64766E]">
-                  <Languages className="w-3.5 h-3.5 text-[#0F5E4B] animate-pulse" />
+                  <Languages className="w-3.5 h-3.5 text-[#0F5E4B]" />
                   <span>Traduzione in {selectedLanguage.name}</span>
                 </span>
               ) : (
@@ -162,7 +162,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                   }`}
                 >
                   {isLoadingMain ? (
-                    <Volume2 className="w-3.5 h-3.5 text-[#0F5E4B] animate-pulse" />
+                    <Volume2 className="w-3.5 h-3.5 text-[#0F5E4B]" />
                   ) : isPlayingMain ? (
                     <Square className="w-3 h-3 fill-current" />
                   ) : (
@@ -192,7 +192,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                     {isPlayingSlow ? (
                       <Square className="w-2.5 h-2.5 fill-current" />
                     ) : (
-                      <span className={isLoadingSlow ? 'animate-pulse' : ''}>Lento</span>
+                      <span>Lento</span>
                     )}
                   </button>
                 )}
@@ -285,7 +285,7 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({
                 }`}
               >
                 {isLoadingCorr ? (
-                  <Volume2 className="w-4 h-4 animate-pulse" />
+                  <Volume2 className="w-4 h-4" />
                 ) : isPlayingCorr ? (
                   <Square className="w-3.5 h-3.5 fill-current" />
                 ) : (

@@ -613,15 +613,27 @@ export default function App() {
         targetLanguageName: selectedLangRef.current?.name,
       });
 
+      const stallFallbackTimer = window.setTimeout(() => {
+        if (!streamHasActivity && !replyCompleteReceived && !winnerLocked && !hardStopped) {
+          hardStopped = true;
+          streamController.abort();
+          fallbackController.abort();
+        }
+      }, 3500);
+
       const hardStopTimer = window.setTimeout(() => {
         hardStopped = true;
         streamController.abort();
         fallbackController.abort();
         setIsTyping(false);
-      }, 34000);
+      }, 12000);
 
       const sendStreamRequest = async (): Promise<void> => {
-        const timer = window.setTimeout(() => streamController.abort(), 22000);
+        const timer = window.setTimeout(() => {
+          if (!streamHasActivity) {
+            streamController.abort();
+          }
+        }, 3500);
         try {
           const res = await fetch('/api/chat/stream', {
             method: 'POST',
@@ -731,15 +743,14 @@ export default function App() {
         }
       };
 
-      const sendChatRequest = async (attempt = 0): Promise<void> => {
-        const controller = attempt === 0 ? fallbackController : new AbortController();
-        const timer = window.setTimeout(() => controller.abort(), 22000);
+      const sendChatRequest = async (): Promise<void> => {
+        const timer = window.setTimeout(() => fallbackController.abort(), 3200);
         try {
           const res = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: requestBody,
-            signal: controller.signal,
+            signal: fallbackController.signal,
           });
           const rawText = await res.text();
           let data: (ChatPayload & { error?: string }) | null = null;
@@ -750,11 +761,7 @@ export default function App() {
           }
 
           if (!res.ok || !data?.replyItalian) {
-            const msg =
-              data?.error ||
-              (res.status >= 500
-                ? 'Timeout temporaneo del server. Tocca Riprova.'
-                : 'Errore di connessione');
+            const msg = data?.error || 'Errore di connessione';
             const err = new Error(msg) as Error & { noRetry?: boolean };
             if (res.status === 429 || (res.status >= 400 && res.status < 500 && res.status !== 408)) {
               err.noRetry = true;
@@ -765,20 +772,6 @@ export default function App() {
             streamController.abort();
             applyCompletedReply(data);
           }
-        } catch (err: unknown) {
-          if (
-            attempt < 1 &&
-            !winnerLocked &&
-            !hardStopped &&
-            !(err instanceof Error && (err as Error & { noRetry?: boolean }).noRetry) &&
-            (typeof navigator === 'undefined' || navigator.onLine)
-          ) {
-            await new Promise((resolve) => window.setTimeout(resolve, 600));
-            if (!winnerLocked && !hardStopped) {
-              return sendChatRequest(attempt + 1);
-            }
-          }
-          throw err;
         } finally {
           window.clearTimeout(timer);
         }
@@ -787,7 +780,7 @@ export default function App() {
       let fallbackPromise: Promise<void> | null = null;
       const startFallbackOnce = () => {
         if (!fallbackPromise && !winnerLocked && !hardStopped) {
-          fallbackPromise = sendChatRequest(0);
+          fallbackPromise = sendChatRequest();
         }
         return fallbackPromise;
       };
@@ -796,7 +789,7 @@ export default function App() {
         if (!streamHasActivity && !replyCompleteReceived && !winnerLocked && !hardStopped) {
           startFallbackOnce()?.catch(() => {});
         }
-      }, 12000);
+      }, 1500);
 
       try {
         try {
@@ -806,14 +799,14 @@ export default function App() {
           if (typeof navigator !== 'undefined' && !navigator.onLine) {
             throw new Error('Sembri offline.');
           }
-          if (streamErr instanceof Error && (streamErr as Error & { noRetry?: boolean }).noRetry) {
+          if (hardStopped || (streamErr instanceof Error && (streamErr as Error & { noRetry?: boolean }).noRetry)) {
             throw streamErr;
           }
           await startFallbackOnce();
         }
       } catch {
         if (!winnerLocked) {
-          cloudCooldownUntilRef.current = Date.now() + 60000;
+          cloudCooldownUntilRef.current = Date.now() + 300000;
           try {
             await runAutomaticFreeFallback();
           } catch {
@@ -823,6 +816,7 @@ export default function App() {
         }
       } finally {
         window.clearTimeout(parallelRaceTimer);
+        window.clearTimeout(stallFallbackTimer);
         window.clearTimeout(hardStopTimer);
         setIsTyping(false);
       }

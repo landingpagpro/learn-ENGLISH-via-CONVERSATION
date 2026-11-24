@@ -453,7 +453,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
             aria-label="Parla con il microfono"
             className="min-w-[44px] min-h-[44px] rounded-2xl bg-[#F4F7F5] border border-[#DCE4DD] text-[#0F5E4B] hover:bg-[#E8F4F0] active:scale-[0.96] disabled:opacity-50 flex items-center justify-center transition-all shrink-0 cursor-pointer"
           >
-            <Mic className={`w-5 h-5 ${isTranscribing ? 'animate-pulse' : ''}`} />
+            <Mic className="w-5 h-5" />
           </button>
 
           {/* Send Button */}

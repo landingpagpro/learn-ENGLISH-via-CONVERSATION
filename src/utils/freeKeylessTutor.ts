@@ -131,7 +131,7 @@ async function tryClientPollinationsChat(
     const res = await fetch('https://text.pollinations.ai/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      signal: AbortSignal.timeout(7000),
+      signal: AbortSignal.timeout(1800),
       body: JSON.stringify({
         model: 'openai',
         jsonMode: true,

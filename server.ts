@@ -357,9 +357,10 @@ function getOrderedCandidates(
 
 async function runWithFallback<T>(
   models: string[],
-  runner: (client: GoogleGenAI, model: string) => Promise<T>
+  runner: (client: GoogleGenAI, model: string) => Promise<T>,
+  maxCandidates = 6
 ): Promise<T> {
-  const candidates = getOrderedCandidates(models, 6);
+  const candidates = getOrderedCandidates(models, maxCandidates);
   let lastErr: unknown = null;
   let lastQuotaErr: unknown = null;
   let sawUpstream503 = false;
@@ -720,8 +721,8 @@ ${transMarkerInstruction}[HINT]
 
     let activeIter: StreamIter | null = null;
     try {
-      // Single-pass fallback across healthy (key, model) pairs prioritizing Gemini 4
-      const candidates = getOrderedCandidates(['gemini-4-hydrogen', 'gemini-3.1-flash-lite'], 6);
+      // Ultra-fast fallback prioritizing lowest-latency gemini-3.1-flash-lite first (max 2 candidates)
+      const candidates = getOrderedCandidates(['gemini-3.1-flash-lite', 'gemini-4-hydrogen'], 2);
       let winner: { iter: StreamIter; firstStep: StreamStep } | null = null;
       let lastStreamErr: unknown = null;
       let lastQuotaStreamErr: unknown = null;
@@ -731,7 +732,7 @@ ${transMarkerInstruction}[HINT]
         if (clientClosed) break;
         const thinkingLevel =
           candidate.model === 'gemini-3.1-flash-lite' ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW;
-        const attemptMs = candidate.model === 'gemini-4-hydrogen' ? 7500 : 5000;
+        const attemptMs = candidate.model === 'gemini-3.1-flash-lite' ? 2800 : 3800;
         const abortController = new AbortController();
         const attemptTimer = setTimeout(() => abortController.abort(), attemptMs);
         try {
@@ -920,9 +921,9 @@ Reply immediately in natural Italian (1 short sentence + 1 short question, max 2
     };
 
     const response = await runWithFallback(
-      ['gemini-4-hydrogen', 'gemini-3.1-flash-lite'],
+      ['gemini-3.1-flash-lite', 'gemini-4-hydrogen'],
       (client, model) => {
-        const ms = model === 'gemini-4-hydrogen' ? 7500 : 5000;
+        const ms = model === 'gemini-3.1-flash-lite' ? 2800 : 3800;
         const abortController = new AbortController();
         return raceTimeout(
           client.models.generateContent({
@@ -947,7 +948,8 @@ Reply immediately in natural Italian (1 short sentence + 1 short question, max 2
           abortController.abort();
           throw e;
         });
-      }
+      },
+      2
     );
 
     const parsed = JSON.parse((response.text ?? '{}').trim()) as Record<string, unknown>;
