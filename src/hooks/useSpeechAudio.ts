@@ -246,7 +246,9 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
       }, 2800);
 
       try {
-        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        const AudioCtx =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         if (!AudioCtx) {
           throw new Error('No AudioContext');
         }
@@ -310,7 +312,6 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
             firstByteTimer = null;
           }
 
-          // Combine leftover odd byte (if any) with incoming chunk
           const combined = new Uint8Array(leftover.length + value.length);
           combined.set(leftover, 0);
           combined.set(value, leftover.length);
@@ -372,7 +373,6 @@ export function useSpeechAudio(onSlowNetwork?: () => void) {
           throw new Error('No audio chunks received');
         }
 
-        // Cache complete WAV for instant zero-latency replay later
         const totalBytes = collectedChunks.reduce((acc, c) => acc + c.byteLength, 0);
         const fullPcm = new Uint8Array(totalBytes);
         let offset = 0;

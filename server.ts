@@ -633,7 +633,7 @@ function buildChatPrompts(
   const levelInfo = LEVEL_INSTRUCTIONS[level] || LEVEL_INSTRUCTIONS.beginner;
   const formattedHistory = (history || [])
     .slice(-2)
-    .map((m) => `${m.sender === 'user' ? 'L' : 'P'}: ${String(m.text || '').slice(0, 160)}`)
+    .map((m) => `${m.sender === 'user' ? 'L' : 'M'}: ${String(m.text || '').slice(0, 160)}`)
     .join('\n');
 
   const safeMessage = userMessage.trim().slice(0, 1000);
@@ -682,7 +682,7 @@ app.post('/api/chat/stream', async (req, res) => {
     const systemInstruction = `You are Marco in "Impara l'Italiano Parlando".
 Context: ${scenarioInfo}
 Level: ${levelInfo}
-ALWAYS write your reply, correction, explanation, and hint strictly in Italian (never reply in English or any other language).
+ALWAYS write your reply, correction, explanation, and hint strictly in Italian (never reply in English).
 Reply immediately with 1 short sentence in natural Italian + 1 short question (max 25 words total, no [REPLY] tag). Then append only:
 [MISTAKE]
 YES or NO (omit [CORRECTED] and [EXPLAIN] if NO)
@@ -885,7 +885,7 @@ app.post('/api/chat', async (req, res) => {
     const systemInstruction = `You are Marco, a friendly native Italian conversation partner in "Impara l'Italiano Parlando".
 Context: ${scenarioInfo}
 Level: ${levelInfo}
-ALWAYS write replyItalian, correctedItalian, explanation, and suggestedNextReply strictly in Italian (never reply in English or any other language).
+ALWAYS write replyItalian, correctedItalian, explanation, and suggestedNextReply strictly in Italian (never reply in English).
 Reply immediately in natural Italian (1 short sentence + 1 short question, max 25 words, in replyItalian). Set hasMistake=true only for real mistakes or non-Italian words, and provide correctedItalian + 1 brief tip in simple Italian (max 15 words, in explanation). Always provide suggestedNextReply in natural Italian (max 12 words).${
       transLang ? ` Also provide replyTranslation of replyItalian in ${transLang}.` : ''
     }`;
@@ -950,8 +950,15 @@ Reply immediately in natural Italian (1 short sentence + 1 short question, max 2
       }
     );
 
-    const parsed = JSON.parse((response.text ?? '{}').trim());
-    return res.json(parsed);
+    const parsed = JSON.parse((response.text ?? '{}').trim()) as Record<string, unknown>;
+    return res.json({
+      replyItalian: String(parsed.replyItalian ?? ''),
+      hasMistake: Boolean(parsed.hasMistake),
+      correctedItalian: String(parsed.correctedItalian ?? ''),
+      explanation: String(parsed.explanation ?? ''),
+      replyTranslation: parsed.replyTranslation ? String(parsed.replyTranslation) : undefined,
+      suggestedNextReply: String(parsed.suggestedNextReply ?? ''),
+    });
   } catch (err: unknown) {
     console.error('Chat error:', err);
     const { status, message } = formatServerError(
@@ -991,7 +998,7 @@ app.post('/api/phrases', async (req, res) => {
             contents: `Generate 5 practical spoken Italian phrases to use in this conversation.\nScenario: ${scenarioInfo}\nLevel: ${levelInfo}\nRecent chat:\n${contextLines || 'Start'}`,
             config: {
               systemInstruction:
-                'You are a friendly native Italian tutor. Return exactly 5 useful spoken Italian phrases suited to the context and level, each with a brief meaning in simple Italian (meaning) and 1 short usage tip in simple Italian (usageNote).',
+                'You are a friendly native Italian tutor. Return exactly 5 useful spoken Italian phrases suited to the context and level, each with a brief meaning in simple Italian and 1 short usage tip in simple Italian.',
               thinkingConfig: {
                 thinkingLevel: model === 'gemini-3.1-flash-lite' ? ThinkingLevel.MINIMAL : ThinkingLevel.LOW,
               },

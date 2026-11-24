@@ -29,7 +29,6 @@ interface ChatComposerProps {
   inputText: string;
   setInputText: (val: string) => void;
   disabled: boolean;
-  keylessMode?: boolean;
   suggestedHint?: string;
   onSendMessage: (text: string) => void;
   onUnlockAudio?: () => void;
@@ -39,7 +38,6 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
   inputText,
   setInputText,
   disabled,
-  keylessMode = false,
   suggestedHint,
   onSendMessage,
   onUnlockAudio,
@@ -191,11 +189,6 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
         }
         setIsRecording(false);
       }
-    }
-
-    if (keylessMode) {
-      setMicError('Il riconoscimento vocale gratuito non è supportato su questo browser. Scrivi il messaggio.');
-      return;
     }
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -446,11 +439,7 @@ export const ChatComposer: React.FC<ChatComposerProps> = ({
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               disabled={isTranscribing}
-              placeholder={
-                isTranscribing
-                  ? 'Invio voce'
-                  : 'Scrivi in italiano'
-              }
+              placeholder={isTranscribing ? 'Invio voce' : 'Scrivi in italiano'}
               className="w-full min-h-[44px] bg-[#F4F7F5] rounded-2xl px-4 py-2.5 text-[15px] text-[#111C18] placeholder:text-[#64766E] border border-[#DCE4DD] focus:outline-none focus:border-[#0F5E4B] focus:bg-white transition-colors"
             />
           </div>

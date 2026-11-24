@@ -13,21 +13,36 @@ import {
   generateKeylessChatReply,
   getNextFreeKeylessPhrases,
   translateKeylessText,
+  waitAndTranslateWithPollinations,
 } from './utils/freeKeylessTutor';
-import { ChatMessage, ConversationThread, ProficiencyLevel, ScenarioId } from './types';
+import {
+  ChatMessage,
+  ConversationThread,
+  ProficiencyLevel,
+  ScenarioId,
+} from './types';
 
 const PHRASES_KEY = 'le_it_parlando_phrases_v3';
 const AUTOSPEAK_KEY = 'le_it_parlando_autospeak_v3';
 const LITEMODE_KEY = 'le_it_parlando_litemode_v4';
-const KEYLESS_MODE_KEY = 'le_it_parlando_keyless_v1';
 const TRANSLANG_KEY = 'le_it_parlando_trans_lang_v3';
 const SAVED_LINKS_KEY = 'le_it_parlando_saved_links_v1';
 const MAX_MESSAGES_PER_THREAD = 30;
 
+const SHORT_SCENARIOS: Record<ScenarioId, string> = {
+  conversation: 'Argomenti',
+  airport: 'Aeroporto',
+  work: 'Lavoro',
+  doctor: 'Medico',
+  meeting: 'Persone',
+};
+
 function persistActiveHostLinks(serverLinks?: { freeUrl?: string | null; domainUrl?: string | null }) {
   try {
     const existingRaw = localStorage.getItem(SAVED_LINKS_KEY);
-    const existing = existingRaw ? (JSON.parse(existingRaw) as { freeUrl?: string; domainUrl?: string }) : {};
+    const existing = existingRaw
+      ? (JSON.parse(existingRaw) as { freeUrl?: string; domainUrl?: string })
+      : {};
     const origin = window.location.origin;
     const host = window.location.hostname.toLowerCase();
     const isFree =
@@ -66,10 +81,9 @@ function formatTimeNow(): string {
 }
 
 function createEmptyThread(scenarioId: ScenarioId, level: ProficiencyLevel): ConversationThread {
-  const initialPhrases = INITIAL_PHRASES[scenarioId][level].map((p) => ({ ...p, memorized: false }));
   return {
     messages: [],
-    phrases: initialPhrases,
+    phrases: INITIAL_PHRASES[scenarioId][level].map((p) => ({ ...p, memorized: false })),
     lastUpdated: Date.now(),
   };
 }
@@ -106,6 +120,7 @@ export default function App() {
         'le_conv_autospeak_v1',
         'le_conv_litemode_v1',
         'le_conv_trans_lang_v1',
+        'le_conv_active_track_v1',
         'lf_conv_phrases_v1',
         'lf_conv_autospeak_v1',
         'lf_conv_litemode_v1',
@@ -151,8 +166,7 @@ export default function App() {
     return () => window.clearInterval(warmTimer);
   }, []);
 
-  // Keep conversations ephemeral in session memory so old conversations never persist across reloads;
-  // only restore memorized phrases state if saved.
+  // Keep conversations ephemeral in session memory; restore memorized Italian phrases per scenario/level
   const [threads, setThreads] = useState<Record<string, ConversationThread>>(() => {
     try {
       const savedPhrases = localStorage.getItem(PHRASES_KEY);
@@ -160,13 +174,25 @@ export default function App() {
         const parsed = JSON.parse(savedPhrases) as Record<string, ConversationThread['phrases']>;
         const restored: Record<string, ConversationThread> = {};
         for (const [key, phrases] of Object.entries(parsed)) {
-          const [sc, lv] = key.split(':') as [ScenarioId, ProficiencyLevel];
-          if (INITIAL_PHRASES[sc]?.[lv] && Array.isArray(phrases)) {
-            restored[key] = {
-              messages: [],
-              phrases,
-              lastUpdated: Date.now(),
-            };
+          const parts = key.split(':');
+          if (parts.length === 2) {
+            const [sc, lv] = parts as [ScenarioId, ProficiencyLevel];
+            if (INITIAL_PHRASES[sc]?.[lv] && Array.isArray(phrases)) {
+              restored[`${sc}:${lv}`] = {
+                messages: [],
+                phrases,
+                lastUpdated: Date.now(),
+              };
+            }
+          } else if (parts.length === 3 && parts[0] === 'italian') {
+            const [, sc, lv] = parts as [string, ScenarioId, ProficiencyLevel];
+            if (INITIAL_PHRASES[sc]?.[lv] && Array.isArray(phrases)) {
+              restored[`${sc}:${lv}`] = {
+                messages: [],
+                phrases,
+                lastUpdated: Date.now(),
+              };
+            }
           }
         }
         return restored;
@@ -192,15 +218,6 @@ export default function App() {
   const [liteMode, setLiteMode] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem(LITEMODE_KEY);
-      if (saved !== null) return saved === 'true';
-    } catch {
-      // Ignore detection errors
-    }
-    return true;
-  });
-  const [keylessMode, setKeylessMode] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem(KEYLESS_MODE_KEY);
       if (saved !== null) return saved === 'true';
     } catch {
       // Ignore detection errors
@@ -245,7 +262,7 @@ export default function App() {
 
   const autoSpeakRef = useRef(autoSpeak);
   const liteModeRef = useRef(liteMode);
-  const keylessModeRef = useRef(keylessMode);
+  const cloudCooldownUntilRef = useRef<number>(0);
   const selectedLangRef = useRef<TranslationLanguage | null>(selectedLanguage);
 
   useEffect(() => {
@@ -278,15 +295,6 @@ export default function App() {
       // Ignore storage errors
     }
   }, [liteMode]);
-
-  useEffect(() => {
-    keylessModeRef.current = keylessMode;
-    try {
-      localStorage.setItem(KEYLESS_MODE_KEY, String(keylessMode));
-    } catch {
-      // Ignore storage errors
-    }
-  }, [keylessMode]);
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const { loadingId, playingId, audioError, play: rawPlay, stop, unlockAudio } = useSpeechAudio();
@@ -362,18 +370,10 @@ export default function App() {
   }, [activeLevel, activeScenario, stop, threadKey]);
 
   const handleSendMessage = useCallback(
-    async (text: string, forceKeyless = false) => {
+    async (text: string) => {
       setChatError(null);
       setFailedMessage(null);
       setInputText('');
-
-      const useKeyless = forceKeyless || keylessModeRef.current;
-
-      if (!useKeyless && typeof navigator !== 'undefined' && !navigator.onLine) {
-        setFailedMessage(text);
-        setChatError('Sembri offline. Riconnettiti a internet o passa alla modalità gratuita.');
-        return;
-      }
 
       if (autoSpeakRef.current) {
         unlockAudio();
@@ -412,42 +412,60 @@ export default function App() {
       let replyCompleteReceived = false;
       let hardStopped = false;
 
-      if (useKeyless) {
-        try {
-          const result = await generateKeylessChatReply({
-            scenarioId: activeScenario,
+      const runAutomaticFreeFallback = async () => {
+        if (winnerLocked) return;
+        const result = await generateKeylessChatReply({
+          scenarioId: activeScenario,
+          level: activeLevel,
+          history: historyForRequest.slice(-4).map((m) => ({
+            sender: m.sender,
+            text: m.text,
+          })),
+          userMessage: text,
+          targetLanguageName: selectedLangRef.current?.name,
+        });
+        winnerLocked = true;
+        setIsTyping(false);
+        if (result.replyItalian && autoSpeakRef.current && !autoSpoken) {
+          autoSpoken = true;
+          play({
+            id: `msg-${replyMsgId}`,
+            text: result.replyItalian,
             level: activeLevel,
-            history: historyForRequest.slice(-4).map((m) => ({
-              sender: m.sender,
-              text: m.text,
-            })),
-            userMessage: text,
-            targetLanguageName: selectedLangRef.current?.name,
+            slow: false,
           });
-          setIsTyping(false);
-          if (result.replyItalian && autoSpeakRef.current) {
-            play({
-              id: `msg-${replyMsgId}`,
-              text: result.replyItalian,
-              level: activeLevel,
-              slow: false,
-            });
-          }
-          setThreads((prev) => {
-            const latest = prev[threadKey] || currentThread;
-            const langCode = selectedLangRef.current?.code;
-            const updatedMessages: ChatMessage[] = [
-              ...latest.messages.map((m) =>
-                m.id === userMsgId && result.hasMistake && result.correctedItalian
-                  ? {
-                      ...m,
-                      correction: {
-                        correctedItalian: result.correctedItalian,
-                        explanation: result.explanation || '',
-                      },
-                    }
-                  : m
-              ),
+        }
+        setThreads((prev) => {
+          const latest = prev[threadKey] || currentThread;
+          const langCode = selectedLangRef.current?.code;
+          const hasPartialReply = latest.messages.some((m) => m.id === replyMsgId);
+          let updatedMessages: ChatMessage[] = latest.messages.map((m) => {
+            if (m.id === userMsgId && result.hasMistake && result.correctedItalian) {
+              return {
+                ...m,
+                correction: {
+                  correctedItalian: result.correctedItalian,
+                  explanation: result.explanation || '',
+                },
+              };
+            }
+            if (m.id === replyMsgId) {
+              return {
+                ...m,
+                text: result.replyItalian,
+                translations:
+                  langCode && result.replyTranslation
+                    ? { ...(m.translations || {}), [langCode]: result.replyTranslation }
+                    : m.translations,
+                suggestedNextReply: result.suggestedNextReply,
+              };
+            }
+            return m;
+          });
+
+          if (!hasPartialReply) {
+            updatedMessages = [
+              ...updatedMessages,
               {
                 id: replyMsgId,
                 sender: 'marco',
@@ -460,15 +478,23 @@ export default function App() {
                 suggestedNextReply: result.suggestedNextReply,
               },
             ];
-            return {
-              ...prev,
-              [threadKey]: {
-                ...latest,
-                messages: updatedMessages.slice(-MAX_MESSAGES_PER_THREAD),
-                lastUpdated: Date.now(),
-              },
-            };
-          });
+          }
+
+          return {
+            ...prev,
+            [threadKey]: {
+              ...latest,
+              messages: updatedMessages.slice(-MAX_MESSAGES_PER_THREAD),
+              lastUpdated: Date.now(),
+            },
+          };
+        });
+      };
+
+      const isOfflineNow = typeof navigator !== 'undefined' && !navigator.onLine;
+      if (isOfflineNow || Date.now() < cloudCooldownUntilRef.current) {
+        try {
+          await runAutomaticFreeFallback();
         } finally {
           setIsTyping(false);
         }
@@ -682,7 +708,9 @@ export default function App() {
                     suggestedNextReply: evt.suggestedNextReply,
                   });
                 } else if (evt.type === 'error') {
-                  const err = new Error(evt.error || 'Errore di connessione') as Error & { noRetry?: boolean };
+                  const err = new Error(evt.error || 'Errore di connessione') as Error & {
+                    noRetry?: boolean;
+                  };
                   if (
                     evt.status &&
                     (evt.status === 429 || (evt.status >= 400 && evt.status < 500 && evt.status !== 408))
@@ -722,7 +750,11 @@ export default function App() {
           }
 
           if (!res.ok || !data?.replyItalian) {
-            const msg = data?.error || (res.status >= 500 ? 'Timeout temporaneo del server. Tocca Riprova.' : 'Errore di connessione');
+            const msg =
+              data?.error ||
+              (res.status >= 500
+                ? 'Timeout temporaneo del server. Tocca Riprova.'
+                : 'Errore di connessione');
             const err = new Error(msg) as Error & { noRetry?: boolean };
             if (res.status === 429 || (res.status >= 400 && res.status < 500 && res.status !== 408)) {
               err.noRetry = true;
@@ -752,7 +784,6 @@ export default function App() {
         }
       };
 
-      // Launch SSE stream alone; only fall back to /api/chat if the stream stalls completely with 0 tokens for 9s
       let fallbackPromise: Promise<void> | null = null;
       const startFallbackOnce = () => {
         if (!fallbackPromise && !winnerLocked && !hardStopped) {
@@ -780,15 +811,15 @@ export default function App() {
           }
           await startFallbackOnce();
         }
-      } catch (err: unknown) {
+      } catch {
         if (!winnerLocked) {
-          const rawMsg = err instanceof Error ? err.message : '';
-          const msg =
-            !rawMsg || (err instanceof DOMException && err.name === 'AbortError') || /abort/i.test(rawMsg)
-              ? 'Connessione scaduta. Tocca Riprova.'
-              : rawMsg;
-          setFailedMessage(text);
-          setChatError(msg);
+          cloudCooldownUntilRef.current = Date.now() + 60000;
+          try {
+            await runAutomaticFreeFallback();
+          } catch {
+            setFailedMessage(text);
+            setChatError('Connessione non riuscita. Tocca Riprova.');
+          }
         }
       } finally {
         window.clearTimeout(parallelRaceTimer);
@@ -820,6 +851,7 @@ export default function App() {
   const handleRefreshPhrases = useCallback(async () => {
     setIsGeneratingPhrases(true);
     setChatError(null);
+
     const applyFreeRotation = () => {
       const currentIds = currentThread.phrases.map((p) => p.id);
       const nextExtra = getNextFreeKeylessPhrases(activeScenario, currentIds);
@@ -839,7 +871,7 @@ export default function App() {
       });
     };
 
-    if (keylessModeRef.current) {
+    if ((typeof navigator !== 'undefined' && !navigator.onLine) || Date.now() < cloudCooldownUntilRef.current) {
       applyFreeRotation();
       setIsGeneratingPhrases(false);
       return;
@@ -866,7 +898,7 @@ export default function App() {
       };
 
       if (!response.ok || !data.phrases?.length) {
-        throw new Error(data.error || 'Impossibile generare nuove frasi.');
+        throw new Error(data.error || 'Impossibile generare nuove frasi');
       }
 
       setThreads((prev) => {
@@ -886,16 +918,18 @@ export default function App() {
     }
   }, [activeLevel, activeScenario, currentThread, threadKey]);
 
-  const handleUsePhraseInChat = useCallback((italian: string) => {
-    setInputText(italian);
+  const handleUsePhraseInChat = useCallback((phraseText: string) => {
+    setInputText(phraseText);
     setPhrasesDrawerOpen(false);
     setMobileView('chat');
   }, []);
 
+  // Seamless automatic translation: chains zero-key client translators and silently falls back to /api/translate (Cloud) + Pollinations queue
   const handleRequestTranslation = useCallback(
     async (messageId: string, text: string, overrideLang?: TranslationLanguage) => {
       const lang = overrideLang || selectedLangRef.current;
       if (!lang) return;
+
       setTranslatingIds((prev) => ({ ...prev, [messageId]: true }));
       const saveTranslation = (translated: string) => {
         setThreads((prev) => {
@@ -917,38 +951,46 @@ export default function App() {
         });
       };
 
-      try {
-        if (keylessModeRef.current) {
-          const keylessTrans = await translateKeylessText(text, lang.code, lang.name);
-          if (keylessTrans) {
-            saveTranslation(keylessTrans);
-            return;
+      const tryServerCloudTranslate = async (): Promise<string | null> => {
+        try {
+          const response = await fetch('/api/translate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text,
+              targetLanguageName: lang.name,
+            }),
+            signal: AbortSignal.timeout(10000),
+          });
+          const data = (await response.json()) as { translation?: string };
+          if (response.ok && data.translation?.trim()) {
+            return data.translation.trim();
           }
-          setChatError('Traduzione istantanea gratuita non disponibile per questa frase. Attendi 45s o usa Cloud.');
+        } catch {
+          // Ignore server failure
+        }
+        return null;
+      };
+
+      try {
+        const keylessTrans = await translateKeylessText(text, lang.code, lang.name);
+        if (keylessTrans) {
+          saveTranslation(keylessTrans);
           return;
         }
-
-        const response = await fetch('/api/translate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            text,
-            targetLanguageName: lang.name,
-          }),
-          signal: AbortSignal.timeout(12000),
-        });
-        const data = (await response.json()) as { translation?: string; error?: string };
-        if (!response.ok || !data.translation) {
-          throw new Error(data.error || 'Traduzione non riuscita');
+        // Automatic silent fallback to Cloud API
+        const autoCloudTrans = await tryServerCloudTranslate();
+        if (autoCloudTrans) {
+          saveTranslation(autoCloudTrans);
+          return;
         }
-        saveTranslation(data.translation);
-      } catch {
-        const fallbackTrans = await translateKeylessText(text, lang.code, lang.name);
-        if (fallbackTrans) {
-          saveTranslation(fallbackTrans);
-        } else {
-          setChatError('Traduzione non riuscita. Riprova.');
+        // Final automatic silent backup: Pollinations queue
+        const queuedPollinations = await waitAndTranslateWithPollinations(text, lang.name);
+        if (queuedPollinations) {
+          saveTranslation(queuedPollinations);
+          return;
         }
+        setChatError('Traduzione al momento non disponibile. Riprova.');
       } finally {
         setTranslatingIds((prev) => {
           const next = { ...prev };
@@ -960,7 +1002,7 @@ export default function App() {
     [currentThread, threadKey]
   );
 
-  const latestPartnerMessage = useMemo(() => {
+  const latestMarcoMessage = useMemo(() => {
     for (let i = currentThread.messages.length - 1; i >= 0; i--) {
       if (currentThread.messages[i].sender === 'marco') {
         return currentThread.messages[i];
@@ -974,8 +1016,8 @@ export default function App() {
   const memorizedCount = currentThread.phrases.filter((p) => p.memorized).length;
 
   return (
-    <div className="h-dvh w-full overflow-hidden flex bg-[#EDF2EE]">
-      {/* Left Sidebar: Topics & 3 Levels (Always visible on md+, toggled on mobile) */}
+    <div className="h-dvh w-full overflow-hidden flex bg-[#F8FAF8] text-[#111B16]">
+      {/* Left Sidebar: Topics & 3 Levels */}
       <div
         className={`${
           mobileView === 'list' ? 'flex w-full' : 'hidden'
@@ -1002,7 +1044,6 @@ export default function App() {
           isTyping={isTyping}
           autoSpeak={autoSpeak}
           liteMode={liteMode}
-          keylessMode={keylessMode}
           memorizedCount={memorizedCount}
           totalPhrases={currentThread.phrases.length}
           onBackToScenarios={() => setMobileView('list')}
@@ -1019,10 +1060,6 @@ export default function App() {
             });
           }}
           onToggleLiteMode={() => setLiteMode((prev) => !prev)}
-          onToggleKeylessMode={() => {
-            setChatError(null);
-            setKeylessMode((prev) => !prev);
-          }}
           onResetChat={handleResetChat}
         />
 
@@ -1033,18 +1070,9 @@ export default function App() {
             onClick={() => setMobileView('list')}
             className="text-xs font-semibold text-[#0F5E4B] whitespace-nowrap cursor-pointer py-1 shrink-0"
           >
-            {activeScenario === 'conversation'
-              ? 'Argomenti'
-              : activeScenario === 'airport'
-              ? 'Aeroporto'
-              : activeScenario === 'work'
-              ? 'Lavoro'
-              : activeScenario === 'doctor'
-              ? 'Medico'
-              : 'Amici'}{' '}
-            ▾
+            {SHORT_SCENARIOS[activeScenario]} ▾
           </button>
-          <div className="flex items-center gap-1 bg-[#E4ECE6] p-0.5 rounded-xl shrink-0">
+          <div className="flex items-center gap-1 bg-[#EEF3EF] p-0.5 rounded-xl shrink-0">
             {LEVELS.map((lvl) => (
               <button
                 key={lvl.id}
@@ -1052,8 +1080,8 @@ export default function App() {
                 onClick={() => handleSelectLevel(lvl.id)}
                 className={`px-2 py-1 rounded-lg text-[11px] font-semibold transition-colors cursor-pointer ${
                   lvl.id === activeLevel
-                    ? 'bg-white text-[#0F5E4B] shadow-[0_1px_2px_rgba(17,28,24,0.06)]'
-                    : 'text-[#4A5C55]'
+                    ? 'bg-white text-[#0F5E4B] shadow-[0_1px_2px_rgba(15,23,42,0.06)]'
+                    : 'text-[#4E5F56]'
                 }`}
               >
                 {lvl.label}
@@ -1066,8 +1094,8 @@ export default function App() {
         <div className="flex-1 overflow-y-auto chat-scroll px-3 sm:px-6 py-4 space-y-3">
           {/* Topic Context Banner */}
           <div className="flex justify-center mb-2">
-            <div className="bg-white/95 border border-[#DCE4DD] text-[#4A5C55] rounded-2xl px-4 py-2 text-xs text-center max-w-md shadow-[0_1px_2px_rgba(17,28,24,0.04)] leading-relaxed">
-              <span className="font-semibold text-[#111C18]">
+            <div className="bg-white/95 border border-[#DCE4DD] text-[#4E5F56] rounded-2xl px-4 py-2 text-xs text-center max-w-md shadow-[0_1px_2px_rgba(15,23,42,0.04)] leading-relaxed">
+              <span className="font-semibold text-[#111B16]">
                 {activeScenarioMeta.title} · {activeLevelMeta.label}
               </span>
               <span className="mx-1.5" aria-hidden="true">
@@ -1079,13 +1107,13 @@ export default function App() {
             </div>
           </div>
 
-          {/* Clean Empty State with App Logo */}
+          {/* Clean Empty State with Italian Logo */}
           {currentThread.messages.length === 0 && !isTyping && (
             <div className="flex justify-center pt-6 pb-2">
-              <div className="bg-white/95 border border-[#DCE4DD] rounded-2xl p-6 max-w-sm w-full text-center shadow-[0_4px_16px_rgba(17,28,24,0.06)]">
+              <div className="bg-white/95 border border-[#DCE4DD] rounded-2xl p-6 max-w-sm w-full text-center shadow-[0_4px_16px_rgba(15,23,42,0.06)]">
                 <div className="flex justify-center mb-3.5">
                   {logoError ? (
-                    <div className="w-20 h-20 rounded-2xl bg-[#0F5E4B] text-white font-bold text-lg flex items-center justify-center border border-[#0F5E4B]/20 shadow-[0_2px_8px_rgba(15,94,75,0.2)]">
+                    <div className="w-20 h-20 rounded-2xl bg-[#0F5E4B] text-white font-bold text-lg flex items-center justify-center border border-[#0F5E4B]/20 shadow-[0_2px_8px_rgba(15,94,75,0.22)]">
                       IT
                     </div>
                   ) : (
@@ -1094,20 +1122,20 @@ export default function App() {
                       alt="Impara l'Italiano Parlando"
                       referrerPolicy="no-referrer"
                       onError={() => setLogoError(true)}
-                      className="w-20 h-20 rounded-2xl object-cover border border-[#DCE4DD] bg-white shadow-[0_2px_8px_rgba(17,28,24,0.08)]"
+                      className="w-20 h-20 rounded-2xl object-cover border border-[#DCE4DD] bg-white shadow-[0_2px_8px_rgba(15,94,75,0.12)]"
                     />
                   )}
                 </div>
-                <h3 className="text-[16px] font-bold text-[#111C18] mb-1">
+                <h3 className="text-[16px] font-bold text-[#111B16] mb-1">
                   {activeScenarioMeta.title}
                 </h3>
-                <p className="text-xs text-[#64766E] leading-relaxed mb-4">
+                <p className="text-xs text-[#6B7D74] leading-relaxed mb-4">
                   {activeScenarioMeta.roleDescription}
                 </p>
                 <button
                   type="button"
                   onClick={() => handleSendMessage('Ciao! Vorrei fare pratica con il mio italiano.')}
-                  className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#0F5E4B] hover:bg-[#0A4638] text-white text-xs font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-[0_2px_6px_rgba(15,94,75,0.22)]"
+                  className="w-full min-h-[44px] px-4 py-2.5 rounded-xl bg-[#0F5E4B] hover:bg-[#0B4A3B] text-white text-xs font-semibold inline-flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-[0_2px_6px_rgba(15,94,75,0.22)]"
                 >
                   <MessageCircle className="w-4 h-4" />
                   <span>Inizia la conversazione</span>
@@ -1135,13 +1163,13 @@ export default function App() {
             />
           ))}
 
-          {/* Offline / API Error Notice with Retry & Switch to Free Keyless Mode */}
+          {/* Offline / Error Notice with Retry */}
           {(!isOnline || chatError || audioError) && (
             <div className="flex justify-center">
               <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl px-4 py-2 text-xs max-w-md text-center flex items-center justify-center gap-2 flex-wrap">
                 <span>
                   {!isOnline
-                    ? 'Sembri offline. Passa a Gratis per continuare senza internet'
+                    ? 'Sembri offline. Controlla la connessione internet per continuare a parlare con Marco.'
                     : chatError || audioError}
                 </span>
                 {failedMessage && isOnline && (
@@ -1153,23 +1181,6 @@ export default function App() {
                     Riprova
                   </button>
                 )}
-                {!keylessMode && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const retryText = failedMessage;
-                      setKeylessMode(true);
-                      setChatError(null);
-                      setFailedMessage(null);
-                      if (retryText) {
-                        handleSendMessage(retryText, true);
-                      }
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-[#0F5E4B] text-white font-semibold hover:bg-[#0A4638] transition-colors cursor-pointer"
-                  >
-                    Usa Gratis (Senza Chiave)
-                  </button>
-                )}
                 {isOnline && (
                   <button
                     type="button"
@@ -1178,7 +1189,7 @@ export default function App() {
                       setFailedMessage(null);
                     }}
                     className="text-rose-600 hover:text-rose-900 font-bold px-1 cursor-pointer"
-                    aria-label="Chiudi errore"
+                    aria-label="Chiudi"
                   >
                     ×
                   </button>
@@ -1195,8 +1206,7 @@ export default function App() {
           inputText={inputText}
           setInputText={setInputText}
           disabled={isTyping}
-          keylessMode={keylessMode}
-          suggestedHint={latestPartnerMessage?.suggestedNextReply}
+          suggestedHint={latestMarcoMessage?.suggestedNextReply}
           onSendMessage={handleSendMessage}
           onUnlockAudio={() => {
             if (autoSpeakRef.current) {
@@ -1226,7 +1236,7 @@ export default function App() {
       {/* Mobile / Tablet Bottom Sheet Drawer for 5 Key Phrases */}
       {phrasesDrawerOpen && (
         <div
-          className="xl:hidden fixed inset-0 z-50 flex items-end sm:items-center sm:justify-end bg-[#111C18]/45 backdrop-blur-[2px]"
+          className="xl:hidden fixed inset-0 z-50 flex items-end sm:items-center sm:justify-end bg-slate-950/45 backdrop-blur-[2px]"
           onClick={() => setPhrasesDrawerOpen(false)}
         >
           <div
@@ -1235,7 +1245,7 @@ export default function App() {
           >
             {/* Mobile Sheet Drag Handle */}
             <div className="sm:hidden pt-2.5 pb-1 bg-white flex justify-center shrink-0">
-              <div className="w-10 h-1 rounded-full bg-[#111C18]/20" />
+              <div className="w-10 h-1 rounded-full bg-slate-900/20" />
             </div>
             <div className="flex-1 min-h-0">
               <PhrasesPanel

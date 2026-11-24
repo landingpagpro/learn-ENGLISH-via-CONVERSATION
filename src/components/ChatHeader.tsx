@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, BookOpen, Cpu, RotateCcw, Volume2, VolumeX, Wifi } from 'lucide-react';
+import { ArrowLeft, BookOpen, RotateCcw, Volume2, VolumeX, Wifi } from 'lucide-react';
 import { APP_LOGO_URL, LEVELS, SCENARIOS } from '../data/scenarios';
 import { ProficiencyLevel, ScenarioId } from '../types';
 
@@ -9,14 +9,12 @@ interface ChatHeaderProps {
   isTyping: boolean;
   autoSpeak: boolean;
   liteMode: boolean;
-  keylessMode: boolean;
   memorizedCount: number;
   totalPhrases: number;
   onBackToScenarios: () => void;
   onOpenPhrases: () => void;
   onToggleAutoSpeak: () => void;
   onToggleLiteMode: () => void;
-  onToggleKeylessMode: () => void;
   onResetChat: () => void;
 }
 
@@ -26,14 +24,12 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   isTyping,
   autoSpeak,
   liteMode,
-  keylessMode,
   memorizedCount,
   totalPhrases,
   onBackToScenarios,
   onOpenPhrases,
   onToggleAutoSpeak,
   onToggleLiteMode,
-  onToggleKeylessMode,
   onResetChat,
 }) => {
   const [confirmReset, setConfirmReset] = useState(false);
@@ -101,27 +97,8 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         </div>
       </div>
 
-      {/* Right Group: Keyless mode + Lite mode + Auto-speak + 5 Phrases Drawer + Reset */}
+      {/* Right Group: Lite mode + Auto-speak + 5 Phrases Drawer + Reset */}
       <div className="flex items-center gap-1 shrink-0">
-        <button
-          type="button"
-          onClick={onToggleKeylessMode}
-          title={
-            keylessMode
-              ? 'Modalità gratuita senza chiave attiva (sempre disponibile)'
-              : 'Passa alla modalità gratuita senza chiave API'
-          }
-          aria-label="Attiva o disattiva modalità gratuita senza chiave"
-          className={`min-h-[38px] sm:min-h-[40px] px-2 sm:px-2.5 rounded-xl border transition-colors flex items-center gap-1 text-xs font-semibold whitespace-nowrap cursor-pointer ${
-            keylessMode
-              ? 'bg-[#E8F4F0] border-[#0F5E4B]/35 text-[#0F5E4B]'
-              : 'bg-white border-[#DCE4DD] text-[#4A5C55] hover:bg-[#F8FAF8]'
-          }`}
-        >
-          <Cpu className="w-3.5 h-3.5 shrink-0" />
-          <span>{keylessMode ? 'Gratis' : 'Cloud'}</span>
-        </button>
-
         <button
           type="button"
           onClick={onToggleLiteMode}

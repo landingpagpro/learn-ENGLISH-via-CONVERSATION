@@ -195,12 +195,12 @@ const GRAMMAR_RULES: GrammarRule[] = [
     explanation: '"How are you" in italiano si traduce "Come stai?".',
   },
   {
-    pattern: /\bthank you|thanks|merci|shukran\b/i,
+    pattern: /\b(thank you|thanks|merci|shukran)\b/i,
     replace: (s) => s.replace(/\b(thank you|thanks|merci|shukran)\b/gi, 'grazie'),
     explanation: 'In italiano per ringraziare si dice sempre "Grazie" o "Grazie mille".',
   },
   {
-    pattern: /\bplease|s'il vous plaît|s'il te plaît\b/i,
+    pattern: /\b(please|s'il vous plaît|s'il te plaît)\b/i,
     replace: (s) => s.replace(/\b(please|s'il vous plaît|s'il te plaît)\b/gi, 'per favore'),
     explanation: 'Usa "per favore" per chiedere qualcosa con gentilezza.',
   },
@@ -271,7 +271,7 @@ function analyzeItalianMessage(input: string): {
     }
   }
 
-  if (notes.length > 0) {
+  if (notes.length > 0 && corrected !== input.trim()) {
     return {
       hasMistake: true,
       correctedItalian: corrected,
@@ -586,7 +586,6 @@ function buildLocalCoachReply(
   const marcoCount = history.filter((m) => m.sender === 'marco').length;
   let selected = turns[marcoCount % turns.length];
 
-  // Contextual keyword reactions so Marco genuinely responds to what the user said
   if (/\bcaff[eè]\b|\bbar\b|\bpizza\b|\bpasta\b|\bcibo\b/.test(lower) && marcoCount > 0) {
     selected = {
       reply: 'Ottima scelta! La cucina e il caffè italiano sono unici. Tu cucini spesso a casa?',
@@ -633,15 +632,12 @@ export async function generateKeylessChatReply(params: {
 }): Promise<KeylessChatResult> {
   const { scenarioId, level, history, userMessage, targetLanguageName } = params;
 
-  // 1. Try Chrome Built-in AI (Gemini Nano) if device supports it (100% local, zero keys)
   const chromeRes = await tryChromeBuiltInChat(scenarioId, level, history, userMessage, targetLanguageName);
   if (chromeRes) return chromeRes;
 
-  // 2. Try Client-Side Keyless AI directly from user's own IP if off 46s rate window
   const pollRes = await tryClientPollinationsChat(scenarioId, level, history, userMessage, targetLanguageName);
   if (pollRes) return pollRes;
 
-  // 3. Always-available local Italian Grammar & Scenario Tutor (zero keys, instant, unlimited)
   return buildLocalCoachReply(scenarioId, level, history, userMessage);
 }
 
@@ -817,22 +813,35 @@ export function getNextFreeKeylessPhrases(scenarioId: ScenarioId, currentIds: st
   return [];
 }
 
+function normalizeIsoCode(code: string): string {
+  const clean = code.toLowerCase().trim();
+  if (clean === 'darija') return 'ar';
+  if (clean === 'zgh') return 'fr';
+  if (clean === 'it-simple') return 'it';
+  if (clean.startsWith('custom:')) return '';
+  return clean.split('-')[0];
+}
+
 export async function translateKeylessText(
   text: string,
   targetLanguageCode: string,
   targetLanguageName: string
 ): Promise<string | null> {
+  const sourceLang = 'it';
+  const isoTarget = normalizeIsoCode(targetLanguageCode);
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
   // 1. Try Chrome Built-in Translator API if supported
   const Translator = getChromeTranslator();
-  if (Translator) {
+  if (Translator && isoTarget && isoTarget !== sourceLang) {
     try {
-      const targetCode = targetLanguageCode.split('-')[0].toLowerCase();
       if (Translator.availability) {
-        const avail = await Translator.availability({ sourceLanguage: 'it', targetLanguage: targetCode });
+        const avail = await Translator.availability({ sourceLanguage: sourceLang, targetLanguage: isoTarget });
         if (avail !== 'no' && avail !== 'unavailable') {
-          const instance = await Translator.create({ sourceLanguage: 'it', targetLanguage: targetCode });
+          const instance = await Translator.create({ sourceLanguage: sourceLang, targetLanguage: isoTarget });
           try {
-            const translated = await instance.translate(text);
+            const translated = await instance.translate(trimmed);
             if (translated.trim()) return translated.trim();
           } finally {
             instance.destroy?.();
@@ -844,7 +853,107 @@ export async function translateKeylessText(
     }
   }
 
-  // 2. Try Client Pollinations if off 46s rate window
+  // 2. Try Chrome Built-in LanguageModel (supports dialects like Darija too)
+  const LM = getChromeLanguageModel();
+  if (LM) {
+    try {
+      const avail = LM.availability ? await LM.availability() : 'available';
+      if (avail !== 'no' && avail !== 'unavailable') {
+        const session = await LM.create({
+          systemPrompt: `Translate the Italian text into ${targetLanguageName}. Return ONLY the translated text without quotes.`,
+        });
+        try {
+          const out = (await session.prompt(trimmed)).trim();
+          if (out) return out;
+        } finally {
+          session.destroy?.();
+        }
+      }
+    } catch {
+      // Fall through
+    }
+  }
+
+  // 3. Try Pollinations right away if off 46s window and target is dialect/custom (e.g. Darija)
+  const isSpecialDialect =
+    targetLanguageCode === 'darija' ||
+    targetLanguageCode === 'zgh' ||
+    targetLanguageCode === 'it-simple' ||
+    targetLanguageCode.startsWith('custom:');
+
+  if (isSpecialDialect && Date.now() - lastPollinationsCallAt >= POLLINATIONS_MIN_INTERVAL_MS) {
+    lastPollinationsCallAt = Date.now();
+    try {
+      const res = await fetch('https://text.pollinations.ai/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(6500),
+        body: JSON.stringify({
+          model: 'openai',
+          messages: [
+            {
+              role: 'system',
+              content: `Translate the Italian text naturally into ${targetLanguageName}. Return ONLY the translated text.`,
+            },
+            { role: 'user', content: trimmed },
+          ],
+        }),
+      });
+      if (res.ok) {
+        const out = (await res.text()).trim();
+        if (out && !/free limit reached/i.test(out)) return out;
+      }
+    } catch {
+      // Fall through
+    }
+  }
+
+  // 4. Direct browser-side Google GTX (free, zero API key, zero 45s wait)
+  if (isoTarget) {
+    if (isoTarget === sourceLang && targetLanguageCode !== 'it-simple') {
+      return trimmed;
+    }
+    try {
+      const gtxUrl = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=it&tl=${encodeURIComponent(
+        isoTarget
+      )}&dt=t&q=${encodeURIComponent(trimmed)}`;
+      const res = await fetch(gtxUrl, { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        const data = (await res.json()) as unknown[];
+        if (Array.isArray(data) && Array.isArray(data[0])) {
+          const joined = (data[0] as Array<[string]>)
+            .map((seg) => (Array.isArray(seg) ? seg[0] || '' : ''))
+            .join('')
+            .trim();
+          if (joined) return joined;
+        }
+      }
+    } catch {
+      // Fall through
+    }
+
+    // 5. Direct browser-side MyMemory API (CORS *, zero 45s limit)
+    try {
+      const mmUrl = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(
+        trimmed.slice(0, 480)
+      )}&langpair=${encodeURIComponent(`it|${isoTarget}`)}`;
+      const res = await fetch(mmUrl, { signal: AbortSignal.timeout(5000) });
+      if (res.ok) {
+        const data = (await res.json()) as {
+          responseStatus?: number;
+          responseData?: { translatedText?: string };
+        };
+        const out = data?.responseData?.translatedText?.trim();
+        if (out && !/MYMEMORY WARNING|QUERY LENGTH LIMIT/i.test(out)) {
+          return out;
+        }
+      }
+    } catch {
+      // Fall through
+    }
+  }
+
+  // 6. Pollinations fallback if off 46s rate window
   const now = Date.now();
   if (now - lastPollinationsCallAt >= POLLINATIONS_MIN_INTERVAL_MS) {
     lastPollinationsCallAt = now;
@@ -860,7 +969,7 @@ export async function translateKeylessText(
               role: 'system',
               content: `Translate the Italian text into ${targetLanguageName}. Return ONLY the translated text.`,
             },
-            { role: 'user', content: text },
+            { role: 'user', content: trimmed },
           ],
         }),
       });
@@ -873,5 +982,45 @@ export async function translateKeylessText(
     }
   }
 
+  return null;
+}
+
+export async function waitAndTranslateWithPollinations(
+  text: string,
+  targetLanguageName: string
+): Promise<string | null> {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+
+  const elapsed = Date.now() - lastPollinationsCallAt;
+  if (elapsed < POLLINATIONS_MIN_INTERVAL_MS) {
+    const waitMs = Math.min(POLLINATIONS_MIN_INTERVAL_MS - elapsed + 350, 47_000);
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+
+  lastPollinationsCallAt = Date.now();
+  try {
+    const res = await fetch('https://text.pollinations.ai/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(7000),
+      body: JSON.stringify({
+        model: 'openai',
+        messages: [
+          {
+            role: 'system',
+            content: `Translate the Italian text into ${targetLanguageName}. Return ONLY the translated text.`,
+          },
+          { role: 'user', content: trimmed },
+        ],
+      }),
+    });
+    if (res.ok) {
+      const out = (await res.text()).trim();
+      if (out && !/free limit reached/i.test(out)) return out;
+    }
+  } catch {
+    // Ignore errors
+  }
   return null;
 }
